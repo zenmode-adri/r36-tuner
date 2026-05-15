@@ -548,7 +548,7 @@ BenchmarkCPU() {
     local SSL="openssl not found"
     if command -v openssl >/dev/null 2>&1; then
         local raw; raw=$(openssl speed sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
-        [ -n "$raw" ] && SSL="${raw} k/s" || SSL="N/A"
+        [ -n "$raw" ] && SSL="$raw" || SSL="N/A"
     fi
 
     local GZIP="N/A"
