@@ -7,16 +7,25 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 
 ## Features
 
-- CPU max frequency selection
+- CPU max / min frequency selection
 - CPU governor selector (performance / schedutil / ondemand / conservative / powersave) — persisted at boot
 - GPU max frequency selection
 - DMC / RAM max frequency selection
-- Voltage undervolting (vdd_arm / vdd_logic / vcc_ddr) with OPP-aware write
+- Voltage undervolting (vdd_logic / vcc_ddr) with OPP-aware write
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence
 - Save profile → applies at every boot via systemd service
 - Fail-safe: panic flag detects boot hangs and auto-disables the profile
 - Startup warning if last boot profile caused a hang
+- View saved profile from the main menu
+
+## Known Limitations
+
+**CPU voltage undervolt (`vdd_arm`) does not work** on stock dArkOSRE kernel.
+
+The RK3326 OPP framework owns the `vdd_arm` regulator and reverts any manual voltage write during cpufreq transitions. A permanent undervolt requires patching the Device Tree (DTB) to modify the OPP voltage table — this is not yet implemented.
+
+> 🔧 **Work in progress:** DTB-based CPU undervolt is planned for a future release.
 
 ## Requirements
 
