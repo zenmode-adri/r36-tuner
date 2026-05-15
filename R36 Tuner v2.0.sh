@@ -4,9 +4,9 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.0"
+VERSION="2.1"
 CURR_TTY="/dev/tty1"
-BACKTITLE="R36 Tuner v${VERSION} — CPU / GPU / DMC / Voltage"
+BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
 BOOT_SCRIPT="/usr/local/bin/r36-tuner-apply.sh"
 SVC_FILE="/etc/systemd/system/r36-tuner.service"
@@ -278,8 +278,6 @@ GovernorMenu() {
     [ -z "$SEL" ] && return
 
     echo "$SEL" > "$CPU_POLICY/scaling_governor" 2>/dev/null
-    dialog --backtitle "$BACKTITLE" --title "✓ Governor Updated" \
-        --msgbox "CPU governor  →  $SEL\n\nSave Profile to apply at boot." 7 50 > "$CURR_TTY"
 }
 
 # ── GPU Tuning ────────────────────────────────────────────────────────────────
@@ -447,9 +445,6 @@ VoltageMenu() {
 # ── Real-Time Monitor ─────────────────────────────────────────────────────────
 
 MonitorMenu() {
-    dialog --backtitle "$BACKTITLE" --title "[ MONITOR ]" \
-        --msgbox "Starting real-time monitor.\nRefresh every 2s — press Cancel / B to exit." 7 50 > "$CURR_TTY"
-
     while true; do
         local TEMP; TEMP=$(GetTempC)
         local TEMP_DISP="${TEMP}°C"
@@ -675,7 +670,7 @@ if [ -f "${CONFIG_FILE}.failed" ]; then
 fi
 
 export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
-/opt/inttools/gptokeyb -1 "R36_Tuner_v2.0" -c "/opt/inttools/keys.gptk" > /dev/null 2>&1 &
+/opt/inttools/gptokeyb -1 "R36_Tuner_v2.1" -c "/opt/inttools/keys.gptk" > /dev/null 2>&1 &
 
 trap ExitMenu EXIT
 MainMenu

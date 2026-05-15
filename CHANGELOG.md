@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.1 — 2026-05-15
+
+UX polish pass — taking Gemini v5.6's best frictionless patterns into the clean v2.0 architecture.
+
+**Changes:**
+- Monitor enters loop immediately — no intro dialog
+- Governor applies silently — no post-apply msgbox (gov shown in menu status)
+- BACKTITLE updated: "ELITE HYBRID"
+- gptokeyb app name bumped to v2.1
+
+---
+
 ## v2.0 — 2026-05-15
 
 First public release. Fusion of the best approaches developed during iterative testing.

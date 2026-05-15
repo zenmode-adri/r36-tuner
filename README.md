@@ -1,5 +1,8 @@
 # R36 Tuner
 
+> **⚠️ Early Access — Experimental**
+> This project is under active development and not yet feature-complete. Expect rough edges, missing options, and breaking changes between versions. Not recommended for daily use until a stable release is tagged.
+
 Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices running [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) (RK3326 SoC).
 
 ## Features
