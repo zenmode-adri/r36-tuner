@@ -1,5 +1,5 @@
 #!/bin/bash
-# R36 Tuner v2.0 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.1 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
@@ -43,6 +43,10 @@ VDD_ARM=$(FindRegulatorDir "vdd_arm")
 VDD_LOGIC=$(FindRegulatorDir "vdd_logic")
 VCC_DDR=$(FindRegulatorDir "vcc_ddr")
 
+# Detect gptokeyb — prefer system PATH, fall back to dArkOSRE location
+GPTOKEYB_BIN=$(command -v gptokeyb 2>/dev/null || echo "/opt/inttools/gptokeyb")
+GPTOKEYB_CFG="/opt/inttools/keys.gptk"
+
 # ── UI Setup ─────────────────────────────────────────────────────────────────
 
 sudo chmod 666 "$CURR_TTY"
@@ -61,6 +65,7 @@ fi
 
 GetCPUCurMHz()  { local f; f=$(cat "$CPU_POLICY/scaling_cur_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000)) || echo "N/A"; }
 GetCPUMaxMHz()  { local f; f=$(cat "$CPU_POLICY/scaling_max_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000)) || echo "N/A"; }
+GetCPUMinMHz()  { local f; f=$(cat "$CPU_POLICY/scaling_min_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000)) || echo "N/A"; }
 GetGPUCurMHz()  { [ -z "$GPU_DEVFREQ" ] && echo "N/A" && return; local f; f=$(cat "$GPU_DEVFREQ/cur_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000000)) || echo "N/A"; }
 GetGPUMaxMHz()  { [ -z "$GPU_DEVFREQ" ] && echo "N/A" && return; local f; f=$(cat "$GPU_DEVFREQ/max_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000000)) || echo "N/A"; }
 GetDMCCurMHz()  { [ -z "$DMC_DEVFREQ" ] && echo "N/A" && return; local f; f=$(cat "$DMC_DEVFREQ/cur_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000000)) || echo "N/A"; }
@@ -95,7 +100,8 @@ ApplyVolt() {
 # ── Config & Boot Service ─────────────────────────────────────────────────────
 
 SaveConfig() {
-    local cpu_hz; cpu_hz=$(cat "$CPU_POLICY/scaling_max_freq" 2>/dev/null || echo "")
+    local cpu_max_hz; cpu_max_hz=$(cat "$CPU_POLICY/scaling_max_freq" 2>/dev/null || echo "")
+    local cpu_min_hz; cpu_min_hz=$(cat "$CPU_POLICY/scaling_min_freq" 2>/dev/null || echo "")
     local gpu_hz; gpu_hz=$([ -n "$GPU_DEVFREQ" ] && cat "$GPU_DEVFREQ/max_freq" 2>/dev/null || echo "")
     local dmc_hz; dmc_hz=$([ -n "$DMC_DEVFREQ" ] && cat "$DMC_DEVFREQ/max_freq" 2>/dev/null || echo "")
     local arm_mv; arm_mv=$(GetRegVoltMV "$VDD_ARM")
@@ -106,8 +112,8 @@ SaveConfig() {
     [ "$logic_mv" = "N/A" ] && logic_mv=""
     [ "$ddr_mv"   = "N/A" ] && ddr_mv=""
     [ "$gov"      = "N/A" ] && gov=""
-    printf "# R36 Tuner profile\nCPU_MAX_KHZ=%s\nGPU_MAX_HZ=%s\nDMC_MAX_HZ=%s\nVDD_ARM_MV=%s\nVDD_LOGIC_MV=%s\nVCC_DDR_MV=%s\nCPU_GOV=%s\n" \
-        "$cpu_hz" "$gpu_hz" "$dmc_hz" "$arm_mv" "$logic_mv" "$ddr_mv" "$gov" > "$CONFIG_FILE"
+    printf "# R36 Tuner profile\nCPU_MAX_KHZ=%s\nCPU_MIN_KHZ=%s\nGPU_MAX_HZ=%s\nDMC_MAX_HZ=%s\nVDD_ARM_MV=%s\nVDD_LOGIC_MV=%s\nVCC_DDR_MV=%s\nCPU_GOV=%s\n" \
+        "$cpu_max_hz" "$cpu_min_hz" "$gpu_hz" "$dmc_hz" "$arm_mv" "$logic_mv" "$ddr_mv" "$gov" > "$CONFIG_FILE"
     chmod 644 "$CONFIG_FILE"
 }
 
@@ -168,7 +174,13 @@ if val_hz "$CPU_MAX_KHZ" && [ -f "$CPU_POL/scaling_max_freq" ]; then
     fi
 fi
 
-[ -n "$CPU_GOV" ] && [ -f "$CPU_POL/scaling_governor" ] && echo "$CPU_GOV" > "$CPU_POL/scaling_governor" 2>/dev/null
+val_hz "$CPU_MIN_KHZ" && [ -f "$CPU_POL/scaling_min_freq" ] && echo "$CPU_MIN_KHZ" > "$CPU_POL/scaling_min_freq" 2>/dev/null
+
+if [ -n "$CPU_GOV" ] && [ -f "$CPU_POL/scaling_available_governors" ]; then
+    case " $(cat "$CPU_POL/scaling_available_governors" 2>/dev/null) " in
+        *" $CPU_GOV "*) echo "$CPU_GOV" > "$CPU_POL/scaling_governor" 2>/dev/null ;;
+    esac
+fi
 
 apply_reg "vdd_logic" "$VDD_LOGIC_MV"
 [ -n "$GPU_DIR" ] && val_hz "$GPU_MAX_HZ" && echo "$GPU_MAX_HZ" > "$GPU_DIR/max_freq" 2>/dev/null && echo "simple_ondemand" > "$GPU_DIR/governor" 2>/dev/null
@@ -237,8 +249,53 @@ CPUTuningMenu() {
 
     echo "$SEL" > "$CPU_POLICY/scaling_max_freq" 2>/dev/null
     local MHZ=$(( SEL / 1000 ))
-    dialog --backtitle "$BACKTITLE" --title "✓ CPU Updated" \
+    dialog --backtitle "$BACKTITLE" --title "✓ CPU Max Updated" \
         --msgbox "CPU max  →  ${MHZ} MHz\nvdd_arm  :  $(GetRegVoltMV "$VDD_ARM") mV  (OPP table)\nTemp     :  $(GetTempC)°C" 7 52 > "$CURR_TTY"
+}
+
+# ── CPU Min Frequency ─────────────────────────────────────────────────────────
+
+CPUMinFreqMenu() {
+    local AVAIL; AVAIL=$(GetCPUAvail)
+    if [ -z "$AVAIL" ]; then
+        dialog --backtitle "$BACKTITLE" --title "CPU Min Frequency" \
+            --msgbox "Cannot read $CPU_POLICY/scaling_available_frequencies" 6 55 > "$CURR_TTY"
+        return
+    fi
+
+    local CUR_MIN; CUR_MIN=$(cat "$CPU_POLICY/scaling_min_freq" 2>/dev/null)
+    local CUR_MAX; CUR_MAX=$(cat "$CPU_POLICY/scaling_max_freq" 2>/dev/null)
+    local CHOICES=()
+    while IFS= read -r hz; do
+        local mhz=$((hz/1000))
+        local m="  "; [ "$hz" = "$CUR_MIN" ] && m="★ "
+        CHOICES+=("$hz" "${m}${mhz} MHz")
+    done <<< "$(echo "$AVAIL" | sort -n)"
+
+    local COUNT=$(( ${#CHOICES[@]} / 2 ))
+    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+
+    local SEL
+    SEL=$(dialog --backtitle "$BACKTITLE" \
+                 --title "[ CPU MIN FREQUENCY ]" \
+                 --default-item "$CUR_MIN" \
+                 --menu "Floor freq when idle  |  Max is $(( CUR_MAX / 1000 )) MHz  |  ★ = current" \
+                 $H 62 $COUNT \
+                 "${CHOICES[@]}" \
+                 2>&1 > "$CURR_TTY")
+    [ -z "$SEL" ] && return
+
+    local MAX_KHZ; MAX_KHZ=$(cat "$CPU_POLICY/scaling_max_freq" 2>/dev/null || echo 9999999)
+    if [ "$SEL" -gt "$MAX_KHZ" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ CPU MIN FREQUENCY ]" \
+            --msgbox "Min freq cannot exceed max freq ($(( MAX_KHZ / 1000 )) MHz)." 6 52 > "$CURR_TTY"
+        return
+    fi
+
+    echo "$SEL" > "$CPU_POLICY/scaling_min_freq" 2>/dev/null
+    local MHZ=$(( SEL / 1000 ))
+    dialog --backtitle "$BACKTITLE" --title "✓ CPU Min Updated" \
+        --msgbox "CPU min  →  ${MHZ} MHz\nTemp     :  $(GetTempC)°C" 6 45 > "$CURR_TTY"
 }
 
 # ── CPU Governor ──────────────────────────────────────────────────────────────
@@ -456,6 +513,7 @@ MonitorMenu() {
 ║ Temperature : %-16s           ║
 ╠════════════════ CPU ═══════════════════╣
 ║ Cur / Max   : %-6s / %-6s MHz     ║
+║ Min Freq    : %-6s MHz                ║
 ║ Voltage     : %-10s                ║
 ║ Governor    : %-15s           ║
 ╠════════════════ GPU ═══════════════════╣
@@ -467,6 +525,7 @@ MonitorMenu() {
 ╚═══════════════════════════════════════╝" \
             "$TEMP_DISP" \
             "$(GetCPUCurMHz)" "$(GetCPUMaxMHz)" \
+            "$(GetCPUMinMHz)" \
             "$(GetRegVoltMV "$VDD_ARM") mV" "$(GetGOV)" \
             "$(GetGPUCurMHz)" "$(GetGPUMaxMHz)" \
             "$(GetRegVoltMV "$VDD_LOGIC") mV" \
@@ -475,7 +534,7 @@ MonitorMenu() {
 
         dialog --backtitle "$BACKTITLE" \
                --title "[ MONITOR — press Cancel to exit ]" \
-               --pause "$INFO" 20 55 2 > "$CURR_TTY"
+               --pause "$INFO" 22 55 2 > "$CURR_TTY"
         [ $? -ne 0 ] && break
     done
 }
@@ -488,7 +547,7 @@ BenchmarkCPU() {
 
     local SSL="openssl not found"
     if command -v openssl >/dev/null 2>&1; then
-        local raw; raw=$(openssl speed sha256 2>&1 | grep "^sha256" | awk '{print $NF}')
+        local raw; raw=$(openssl speed sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
         [ -n "$raw" ] && SSL="${raw} k/s" || SSL="N/A"
     fi
 
@@ -569,15 +628,15 @@ BenchmarkMenu() {
     esac
 }
 
-# ── Save / Reset Profile ──────────────────────────────────────────────────────
+# ── Save / Reset / View Profile ───────────────────────────────────────────────
 
 SaveProfileMenu() {
     local BOOT_ACTIVE="No"
     [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && BOOT_ACTIVE="Yes"
 
     dialog --backtitle "$BACKTITLE" --title "[ SAVE PROFILE ]" \
-        --yesno "Save current tuning as boot profile?\n\nCPU max   : $(GetCPUMaxMHz) MHz\nGPU max   : $(GetGPUMaxMHz) MHz\nDMC max   : $(GetDMCMaxMHz) MHz\nvdd_arm   : $(GetRegVoltMV "$VDD_ARM") mV\nvdd_logic : $(GetRegVoltMV "$VDD_LOGIC") mV\nvcc_ddr   : $(GetRegVoltMV "$VCC_DDR") mV\nGovernor  : $(GetGOV)\n\nFail-safe : panic flag active at boot\nAutostart : $BOOT_ACTIVE" \
-        20 55 > "$CURR_TTY"
+        --yesno "Save current tuning as boot profile?\n\nCPU max   : $(GetCPUMaxMHz) MHz\nCPU min   : $(GetCPUMinMHz) MHz\nGPU max   : $(GetGPUMaxMHz) MHz\nDMC max   : $(GetDMCMaxMHz) MHz\nvdd_arm   : $(GetRegVoltMV "$VDD_ARM") mV\nvdd_logic : $(GetRegVoltMV "$VDD_LOGIC") mV\nvcc_ddr   : $(GetRegVoltMV "$VCC_DDR") mV\nGovernor  : $(GetGOV)\n\nFail-safe : panic flag active at boot\nAutostart : $BOOT_ACTIVE" \
+        22 55 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     SaveConfig
@@ -601,6 +660,17 @@ ResetProfileMenu() {
         9 50 > "$CURR_TTY"
 }
 
+ViewProfileMenu() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ SAVED PROFILE ]" \
+            --msgbox "No profile saved.\n\n$CONFIG_FILE not found." 8 50 > "$CURR_TTY"
+        return
+    fi
+    local CONTENT; CONTENT=$(cat "$CONFIG_FILE" 2>/dev/null)
+    dialog --backtitle "$BACKTITLE" --title "[ SAVED PROFILE — $CONFIG_FILE ]" \
+        --msgbox "$CONTENT" 16 52 > "$CURR_TTY"
+}
+
 # ── Exit ──────────────────────────────────────────────────────────────────────
 
 ExitMenu() {
@@ -618,24 +688,27 @@ ExitMenu() {
 MainMenu() {
     while true; do
         local ARM_MV; ARM_MV=$(GetRegVoltMV "$VDD_ARM")
-        local PROF_STATUS="off"; [ -f "$SVC_FILE" ] && PROF_STATUS="✓ on"
+        local PROF_STATUS="off"
+        [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
         CHOICE=$(dialog --backtitle "$BACKTITLE" \
                         --title "[ MAIN MENU ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
                         --menu "Temp: $(GetTempC)°C  CPU: $(GetCPUMaxMHz)MHz  GPU: $(GetGPUMaxMHz)MHz  arm: ${ARM_MV}mV" \
-                        22 68 10 \
-                        1  "CPU Tuning          ($(GetCPUMaxMHz) MHz)" \
-                        2  "CPU Governor        ($(GetGOV))" \
-                        3  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
-                        4  "DMC / RAM Tuning    ($(GetDMCMaxMHz) MHz)" \
-                        5  "Voltage Tuning      (vdd_arm: ${ARM_MV} mV)" \
-                        6  "Real-Time Monitor   ($(GetTempC)°C)" \
-                        7  "Benchmark" \
-                        8  "Save Profile (boot) [${PROF_STATUS}]" \
-                        9  "Reset Profile" \
-                        10 "Exit" \
+                        22 68 12 \
+                        1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
+                        2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
+                        3  "CPU Governor        ($(GetGOV))" \
+                        4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
+                        5  "DMC / RAM Tuning    ($(GetDMCMaxMHz) MHz)" \
+                        6  "Voltage Tuning      (vdd_arm: ${ARM_MV} mV)" \
+                        7  "Real-Time Monitor   ($(GetTempC)°C)" \
+                        8  "Benchmark" \
+                        9  "Save Profile (boot) [${PROF_STATUS}]" \
+                        10 "View Saved Profile" \
+                        11 "Reset Profile" \
+                        12 "Exit" \
                         2>&1 > "$CURR_TTY")
 
         local RET=$?
@@ -643,15 +716,17 @@ MainMenu() {
 
         case $CHOICE in
             1)  CPUTuningMenu ;;
-            2)  GovernorMenu ;;
-            3)  GPUTuningMenu ;;
-            4)  DMCTuningMenu ;;
-            5)  VoltageMenu ;;
-            6)  MonitorMenu ;;
-            7)  BenchmarkMenu ;;
-            8)  SaveProfileMenu ;;
-            9)  ResetProfileMenu ;;
-            10) ExitMenu ;;
+            2)  CPUMinFreqMenu ;;
+            3)  GovernorMenu ;;
+            4)  GPUTuningMenu ;;
+            5)  DMCTuningMenu ;;
+            6)  VoltageMenu ;;
+            7)  MonitorMenu ;;
+            8)  BenchmarkMenu ;;
+            9)  SaveProfileMenu ;;
+            10) ViewProfileMenu ;;
+            11) ResetProfileMenu ;;
+            12) ExitMenu ;;
         esac
     done
 }
@@ -670,7 +745,8 @@ if [ -f "${CONFIG_FILE}.failed" ]; then
 fi
 
 export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
-/opt/inttools/gptokeyb -1 "R36_Tuner_v2.1" -c "/opt/inttools/keys.gptk" > /dev/null 2>&1 &
+[ -x "$GPTOKEYB_BIN" ] && "$GPTOKEYB_BIN" -1 "R36_Tuner_v${VERSION}" \
+    ${GPTOKEYB_CFG:+-c "$GPTOKEYB_CFG"} > /dev/null 2>&1 &
 
 trap ExitMenu EXIT
 MainMenu

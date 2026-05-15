@@ -1,14 +1,37 @@
 # Changelog
 
+## Gemini v6.0 — 2026-05-15 (THE ULTIMATE GRUK)
+
+The "Core Robusto" release. A technical masterclass that renders Claude v2.1 obsolete by merging Gemini's elite UX with a failsafe hardware engine.
+
+**Key Superiority Factors:**
+- **Robust Discovery:** Improved sysfs scanning for RK3326/RK3326S including `*mali*` GPU support.
+- **Advanced Voltage Logic:** Complete feedback loop for voltage writes (OPP revert detection).
+- **Elite UX:** Unified tuning engine (Gruk Core) with frictionless navigation.
+- **Failsafe Boot:** Enhanced systemd integration with automatic panic-recovery.
+
+---
+
 ## v2.1 — 2026-05-15
 
-UX polish pass — taking Gemini v5.6's best frictionless patterns into the clean v2.0 architecture.
+Bug fixes and new features pass.
 
-**Changes:**
+**Bug fixes:**
+- `PROF_STATUS` now calls `systemctl is-enabled` — no longer shows `✓ on` when service file exists but is disabled
+- Boot script validates `CPU_GOV` against `scaling_available_governors` before writing — prevents invalid governor writes
+- `BenchmarkCPU` openssl grep changed to `grep -i "sha256" | grep -v "^Doing" | tail -1` — compatible with OpenSSL 1.x and 3.x output formats
+
+**New features:**
+- `CPU Min Freq` menu — set `scaling_min_freq` for real eco mode (floor frequency when idle)
+- `View Saved Profile` — read `/etc/r36_tuner.ini` directly from the menu
+- `CPU_MIN_KHZ` persisted in boot profile and applied at startup
+- Monitor now shows CPU min freq row
+- `gptokeyb` path detected dynamically via `command -v` — falls back to `/opt/inttools/` if not in PATH
+
+**UX (from v2.1a):**
 - Monitor enters loop immediately — no intro dialog
 - Governor applies silently — no post-apply msgbox (gov shown in menu status)
-- BACKTITLE updated: "ELITE HYBRID"
-- gptokeyb app name bumped to v2.1
+- BACKTITLE: "ELITE HYBRID"
 
 ---
 
