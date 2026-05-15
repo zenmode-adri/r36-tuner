@@ -518,6 +518,151 @@ VoltageMenu() {
     esac
 }
 
+# ── DTB Undervolt ────────────────────────────────────────────────────────────
+
+DTBUndervoltMenu() {
+    # 1. Check tool
+    if ! command -v fdtput >/dev/null 2>&1; then
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --yesno "device-tree-compiler not installed.\n\nInstall now? (~500KB, requires internet)" 9 55 > "$CURR_TTY"
+        [ $? -ne 0 ] && return
+        dialog --infobox "Installing device-tree-compiler..." 4 50 > "$CURR_TTY"
+        apt-get install -y device-tree-compiler >/dev/null 2>&1
+        if ! command -v fdtput >/dev/null 2>&1; then
+            dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+                --msgbox "Install failed. Check internet connection." 6 48 > "$CURR_TTY"
+            return
+        fi
+    fi
+
+    # 2. Find DTB
+    local DTB=""
+    for f in /boot/rk3326-r36s-linux.dtb /boot/rk3326*.dtb /boot/*.dtb; do
+        [ -f "$f" ] && DTB="$f" && break
+    done
+    if [ -z "$DTB" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --msgbox "DTB file not found in /boot/" 6 45 > "$CURR_TTY"
+        return
+    fi
+
+    # 3. Find OPP table node
+    local OPP_BASE=""
+    for candidate in /opp-table0 /opp-table /cpu-opp-table; do
+        fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && OPP_BASE="$candidate" && break
+    done
+    if [ -z "$OPP_BASE" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --msgbox "OPP table not found in DTB.\nCannot proceed." 7 48 > "$CURR_TTY"
+        return
+    fi
+
+    # 4. Read OPP entries (node name = opp@<hz>)
+    local NODES=() FREQS=() VOLTS=()
+    while IFS= read -r node; do
+        [[ "$node" != opp@* ]] && continue
+        local freq_hz="${node#opp@}"
+        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
+        [ -z "$volt_raw" ] && continue
+        local volt_uv; volt_uv=$(echo "$volt_raw" | awk '{print $NF}')
+        NODES+=("$OPP_BASE/$node")
+        FREQS+=("$freq_hz")
+        VOLTS+=("$volt_uv")
+    done < <(fdtget -l "$DTB" "$OPP_BASE" 2>/dev/null | sort -t@ -k2 -n)
+
+    if [ ${#NODES[@]} -eq 0 ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --msgbox "No OPP entries found in $OPP_BASE" 6 48 > "$CURR_TTY"
+        return
+    fi
+
+    # 5. Build current table display
+    local TABLE="DTB: $(basename "$DTB")  |  OPP node: $OPP_BASE\n\nCurrent OPP voltages:\n"
+    for (( i=0; i<${#NODES[@]}; i++ )); do
+        local mhz=$(( ${FREQS[$i]} / 1000000 ))
+        local mv=$(( ${VOLTS[$i]} / 1000 ))
+        TABLE+="  ${mhz} MHz  →  ${mv} mV\n"
+    done
+    [ -f "${DTB}.bak" ] && TABLE+="\n[Backup exists: ${DTB}.bak]"
+
+    # 6. Restore option if backup exists
+    local RESTORE_OPT=()
+    [ -f "${DTB}.bak" ] && RESTORE_OPT=("restore" "Restore original backup")
+
+    # 7. Select offset
+    local OFFSET
+    OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+        --menu "$TABLE\nSelect voltage offset (applied to ALL entries):" \
+        26 60 8 \
+        "-100" "-100 mV  (aggressive)" \
+        "-75"  " -75 mV" \
+        "-50"  " -50 mV  (moderate)" \
+        "-25"  " -25 mV  (conservative)" \
+        "0"    "   0 mV  (read table only)" \
+        "+25"  " +25 mV" \
+        "+50"  " +50 mV  (restore margin)" \
+        "${RESTORE_OPT[@]}" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$OFFSET" ] && return
+
+    # Restore backup
+    if [ "$OFFSET" = "restore" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --yesno "Restore original DTB from backup?\n\n${DTB}.bak → $DTB\n\nReboot required." 10 55 > "$CURR_TTY"
+        if [ $? -eq 0 ]; then
+            cp "${DTB}.bak" "$DTB" && \
+                dialog --backtitle "$BACKTITLE" --title "✓ Restored" \
+                    --yesno "Original DTB restored.\n\nReboot now?" 7 45 > "$CURR_TTY" && reboot
+        fi
+        return
+    fi
+    [ "$OFFSET" = "0" ] && return
+
+    # 8. Preview + confirm
+    local PREVIEW="Offset: ${OFFSET} mV\n\n"
+    for (( i=0; i<${#NODES[@]}; i++ )); do
+        local mhz=$(( ${FREQS[$i]} / 1000000 ))
+        local mv=$(( ${VOLTS[$i]} / 1000 ))
+        local new_mv=$(( mv + OFFSET ))
+        [ $new_mv -lt 700 ] && new_mv=700
+        PREVIEW+="  ${mhz} MHz: ${mv} → ${new_mv} mV\n"
+    done
+    PREVIEW+="\nBackup: ${DTB}.bak  |  Reboot required."
+
+    dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — CONFIRM ]" \
+        --yesno "$PREVIEW" 22 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    # 9. Backup + apply
+    cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
+    dialog --infobox "Patching DTB..." 4 35 > "$CURR_TTY"
+
+    local FAIL=0
+    for (( i=0; i<${#NODES[@]}; i++ )); do
+        local node="${NODES[$i]}"
+        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$node" opp-microvolt 2>/dev/null)
+        local new_vals=""
+        for uv in $volt_raw; do
+            local mv=$(( uv / 1000 ))
+            local new_uv=$(( (mv + OFFSET) * 1000 ))
+            [ $new_uv -lt 700000 ] && new_uv=700000
+            new_vals+="$new_uv "
+        done
+        # shellcheck disable=SC2086
+        fdtput -t u "$DTB" "$node" opp-microvolt $new_vals 2>/dev/null || FAIL=1
+    done
+
+    if [ $FAIL -eq 0 ]; then
+        dialog --backtitle "$BACKTITLE" --title "✓ DTB Patched" \
+            --yesno "DTB patched successfully.\nBackup: ${DTB}.bak\n\nReboot now to apply?" 9 52 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+    else
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+        cp "${DTB}.bak" "$DTB"
+    fi
+}
+
 # ── Real-Time Monitor ─────────────────────────────────────────────────────────
 
 MonitorMenu() {
@@ -715,19 +860,20 @@ MainMenu() {
                         --ok-label "Select" \
                         --cancel-label "Exit" \
                         --menu "Temp: $(GetTempC)°C  CPU: $(GetCPUMaxMHz)MHz  GPU: $(GetGPUMaxMHz)MHz  arm: ${ARM_MV}mV" \
-                        22 68 12 \
+                        22 68 13 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
                         4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
                         5  "DMC / RAM Tuning    ($(GetDMCMaxMHz) MHz)" \
-                        6  "Voltage Tuning      (vdd_arm: ${ARM_MV} mV)" \
-                        7  "Real-Time Monitor   ($(GetTempC)°C)" \
-                        8  "Benchmark" \
-                        9  "Save Profile (boot) [${PROF_STATUS}]" \
-                        10 "View Saved Profile" \
-                        11 "Reset Profile" \
-                        12 "Exit" \
+                        6  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
+                        7  "DTB Undervolt       (permanent, needs reboot)" \
+                        8  "Real-Time Monitor   ($(GetTempC)°C)" \
+                        9  "Benchmark" \
+                        10 "Save Profile (boot) [${PROF_STATUS}]" \
+                        11 "View Saved Profile" \
+                        12 "Reset Profile" \
+                        13 "Exit" \
                         2>&1 > "$CURR_TTY")
 
         local RET=$?
@@ -740,12 +886,13 @@ MainMenu() {
             4)  GPUTuningMenu ;;
             5)  DMCTuningMenu ;;
             6)  VoltageMenu ;;
-            7)  MonitorMenu ;;
-            8)  BenchmarkMenu ;;
-            9)  SaveProfileMenu ;;
-            10) ViewProfileMenu ;;
-            11) ResetProfileMenu ;;
-            12) ExitMenu ;;
+            7)  DTBUndervoltMenu ;;
+            8)  MonitorMenu ;;
+            9)  BenchmarkMenu ;;
+            10) SaveProfileMenu ;;
+            11) ViewProfileMenu ;;
+            12) ResetProfileMenu ;;
+            13) ExitMenu ;;
         esac
     done
 }
