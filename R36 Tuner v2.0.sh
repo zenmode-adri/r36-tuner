@@ -441,8 +441,16 @@ SetVoltForReg() {
     fi
 
     local CUR_MV; CUR_MV=$(GetRegVoltMV "$DIR")
-    local REG_MIN=$(( $(cat "$DIR/min_microvolts" 2>/dev/null || echo 800000) / 1000 ))
-    local REG_MAX=$(( $(cat "$DIR/max_microvolts" 2>/dev/null || echo 1350000) / 1000 ))
+    local REG_MIN_RAW; REG_MIN_RAW=$(cat "$DIR/min_microvolts" 2>/dev/null || echo 0)
+    local REG_MAX_RAW; REG_MAX_RAW=$(cat "$DIR/max_microvolts" 2>/dev/null || echo 0)
+    local REG_MIN=$(( REG_MIN_RAW / 1000 ))
+    local REG_MAX=$(( REG_MAX_RAW / 1000 ))
+    # fallback: if sysfs doesn't expose valid range, use current ±200mV
+    if [ "$REG_MIN" -eq 0 ] || [ "$REG_MAX" -eq 0 ] || [ "$REG_MAX" -le "$REG_MIN" ]; then
+        local BASE; BASE=$([ "$CUR_MV" != "N/A" ] && echo "$CUR_MV" || echo 1100)
+        REG_MIN=$(( BASE - 200 ))
+        REG_MAX=$(( BASE + 200 ))
+    fi
     local REG_MIN_R=$(( (REG_MIN / 25) * 25 ))
     local REG_MAX_R=$(( (REG_MAX / 25) * 25 ))
     local DANGER_MSG=""
