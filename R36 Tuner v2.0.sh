@@ -84,9 +84,14 @@ GetDMCAvail()   { [ -z "$DMC_DEVFREQ" ] && return; cat "$DMC_DEVFREQ/available_f
 ApplyVolt() {
     local dir="$1" mv="$2"
     [ -z "$dir" ] && return 3
-    local reg_min=$(( $(cat "$dir/min_microvolts" 2>/dev/null || echo 800000) / 1000 ))
-    local reg_max=$(( $(cat "$dir/max_microvolts" 2>/dev/null || echo 1350000) / 1000 ))
-    if ! [[ "$mv" =~ ^[0-9]+$ ]] || [ "$mv" -lt "$reg_min" ] || [ "$mv" -gt "$reg_max" ]; then return 1; fi
+    if ! [[ "$mv" =~ ^[0-9]+$ ]]; then return 1; fi
+    local reg_min_raw; reg_min_raw=$(cat "$dir/min_microvolts" 2>/dev/null || echo 0)
+    local reg_max_raw; reg_max_raw=$(cat "$dir/max_microvolts" 2>/dev/null || echo 0)
+    if [ "$reg_min_raw" -gt 0 ] && [ "$reg_max_raw" -gt 0 ]; then
+        local reg_min=$(( reg_min_raw / 1000 ))
+        local reg_max=$(( reg_max_raw / 1000 ))
+        [ "$mv" -lt "$reg_min" ] || [ "$mv" -gt "$reg_max" ] && return 1
+    fi
     [ ! -w "$dir/microvolts" ] && return 2
     local uv=$(( mv * 1000 ))
     local cur_min; cur_min=$(cat "$dir/min_microvolts" 2>/dev/null || echo 0)
