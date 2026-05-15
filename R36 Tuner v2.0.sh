@@ -84,7 +84,9 @@ GetDMCAvail()   { [ -z "$DMC_DEVFREQ" ] && return; cat "$DMC_DEVFREQ/available_f
 ApplyVolt() {
     local dir="$1" mv="$2"
     [ -z "$dir" ] && return 3
-    if ! [[ "$mv" =~ ^[0-9]+$ ]] || [ "$mv" -lt 800 ] || [ "$mv" -gt 1350 ]; then return 1; fi
+    local reg_min=$(( $(cat "$dir/min_microvolts" 2>/dev/null || echo 800000) / 1000 ))
+    local reg_max=$(( $(cat "$dir/max_microvolts" 2>/dev/null || echo 1350000) / 1000 ))
+    if ! [[ "$mv" =~ ^[0-9]+$ ]] || [ "$mv" -lt "$reg_min" ] || [ "$mv" -gt "$reg_max" ]; then return 1; fi
     [ ! -w "$dir/microvolts" ] && return 2
     local uv=$(( mv * 1000 ))
     local cur_min; cur_min=$(cat "$dir/min_microvolts" 2>/dev/null || echo 0)
@@ -439,11 +441,15 @@ SetVoltForReg() {
     fi
 
     local CUR_MV; CUR_MV=$(GetRegVoltMV "$DIR")
+    local REG_MIN=$(( $(cat "$DIR/min_microvolts" 2>/dev/null || echo 800000) / 1000 ))
+    local REG_MAX=$(( $(cat "$DIR/max_microvolts" 2>/dev/null || echo 1350000) / 1000 ))
+    local REG_MIN_R=$(( (REG_MIN / 25) * 25 ))
+    local REG_MAX_R=$(( (REG_MAX / 25) * 25 ))
     local DANGER_MSG=""
     [ "$DANGER" = "1" ] && DANGER_MSG="\n[!] vcc_ddr: wrong voltage = data corruption / crash."
 
     local CHOICES=()
-    for v in $(seq 1350 -25 800); do
+    for v in $(seq $REG_MAX_R -25 $REG_MIN_R); do
         local m="  "; [ "$v" = "$CUR_MV" ] && m="★ "
         CHOICES+=("$v" "${m}${v} mV")
     done
@@ -452,7 +458,7 @@ SetVoltForReg() {
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ VOLTAGE — $LABEL ]" \
                  --default-item "$CUR_MV" \
-                 --menu "Current: ${CUR_MV} mV  |  Step: 25 mV (RK805)${DANGER_MSG}" \
+                 --menu "Current: ${CUR_MV} mV  |  Range: ${REG_MIN_R}–${REG_MAX_R} mV  |  Step: 25 mV${DANGER_MSG}" \
                  20 55 15 \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
@@ -466,7 +472,7 @@ SetVoltForReg() {
         0) MSG="Applied: ${SEL} mV  (read-back: ${ACTUAL_MV} mV)\n\nSave Profile → applies at boot.\nDTB patch = truly permanent." ;;
         4) MSG="Write sent but OPP reverted it.\nRead-back: ${ACTUAL_MV} mV\n\nOPP framework owns this regulator during\ncpufreq transitions. DTB patch required\nfor a permanent undervolt." ;;
         2) MSG="Write blocked — regulator is read-only.\n\nDTB patch required for undervolt." ;;
-        1) MSG="Value ${SEL} mV out of safe range (800–1350)." ;;
+        1) MSG="Value ${SEL} mV out of range (${REG_MIN_R}–${REG_MAX_R} mV)." ;;
         3) MSG="Regulator directory not found." ;;
     esac
 
