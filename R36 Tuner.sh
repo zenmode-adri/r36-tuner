@@ -1362,7 +1362,7 @@ BenchmarkGPU() {
     local FB_RES
     FB_RES=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null | tr ',' 'x')
     [ -z "$FB_RES" ] && FB_RES="640x480"
-    glmark2-es2-drm --size "$FB_RES" > "$GL_LOG" 2>&1
+    glmark2-es2-drm --off-screen --size "$FB_RES" > "$GL_LOG" 2>&1
     SCORE=$(grep -i "glmark2 Score" "$GL_LOG" | awk '{print $NF}')
     local GPU_DISP="${SCORE} pts"
     if [ -z "$SCORE" ]; then
