@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0 — 2026-05-16
+
+**glmark2-es2-fbdev bundled (sin wifi):**
+- glmark2-es2-fbdev y sus data files embebidos en el script como base64 (~9 MB total)
+- Al lanzar GPU benchmark sin glmark2 instalado → pregunta si instalar
+- Instalación automática via `dpkg -i` desde datos embebidos, sin internet
+- Script autoextraíble: `awk` + `base64 -d` + `dpkg -i` — sin dependencias externas
+- Fuente: avafinger/mali-fbdev-stress-test-tools (armhf, Mali fbdev mode)
+
 ## v1.9 — 2026-05-16
 
 **GPU Undervolt (DTB):**
