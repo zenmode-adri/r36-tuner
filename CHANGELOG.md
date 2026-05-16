@@ -2,6 +2,16 @@
 
 ## v2.0 — 2026-05-16
 
+**Fix: script no arrancaba en el dispositivo:**
+- PowerShell introdujo UTF-8 BOM y CRLF al escribir el base64 — bash en Linux rechazaba el shebang
+- Fix: reconstruido con UTF-8 sin BOM, LF puro
+
+**Fix: arquitectura incorrecta (armhf → arm64):**
+- dArkOSRE es arm64 (confirmado por kernel `Image` en /boot, no `zImage`)
+- Sustituido glmark2-es2-fbdev armhf por arm64 (avafinger/mali-fbdev-stress-test-tools)
+
+## v2.0 — 2026-05-16 (original)
+
 **glmark2-es2-fbdev bundled (sin wifi):**
 - glmark2-es2-fbdev y sus data files embebidos en el script como base64 (~9 MB total)
 - Al lanzar GPU benchmark sin glmark2 instalado → pregunta si instalar
