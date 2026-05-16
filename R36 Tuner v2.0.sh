@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v2.1 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.4 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.1"
+VERSION="2.4"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -227,6 +227,89 @@ EOF
 RemoveBootService() {
     systemctl disable r36-tuner.service >/dev/null 2>&1
     rm -f "$SVC_FILE" "$BOOT_SCRIPT"
+    systemctl daemon-reload
+}
+
+SetupDTBSafetyService() {
+    # Early service: runs before basic.target — detects failed DTB boot and restores backup
+    cat > "$DTB_SAFETY_SCRIPT" << 'SAFETYEOF'
+#!/bin/bash
+DTB="/boot/rk3326-r36s-linux.dtb"
+PENDING="/boot/.r36_dtb_patch_pending"
+BOOTING="/boot/.r36_dtb_patch_booting"
+RESTORED="/boot/.r36_dtb_restored"
+
+# Previous boot started test but never confirmed → boot hung/crashed → restore
+if [ -f "$BOOTING" ]; then
+    rm -f "$BOOTING"
+    if [ -f "${DTB}.bak" ]; then
+        cp "${DTB}.bak" "$DTB"
+        sync
+        touch "$RESTORED"
+    fi
+    exit 0
+fi
+
+# Fresh patch pending → transition to booting test
+if [ -f "$PENDING" ]; then
+    mv "$PENDING" "$BOOTING"
+    sync
+fi
+SAFETYEOF
+    chmod +x "$DTB_SAFETY_SCRIPT"
+
+    # DTB safety confirm script — runs late to mark boot as stable
+    local CONFIRM_SCRIPT="/usr/local/bin/r36-dtb-confirm.sh"
+    cat > "$CONFIRM_SCRIPT" << 'CONFIRMEOF'
+#!/bin/bash
+BOOTING="/boot/.r36_dtb_patch_booting"
+[ -f "$BOOTING" ] && rm -f "$BOOTING" && sync
+CONFIRMEOF
+    chmod +x "$CONFIRM_SCRIPT"
+
+    # Early service — DefaultDependencies=no so it runs before basic.target
+    cat > "$DTB_SAFETY_SVC" << EOF
+[Unit]
+Description=R36 Tuner — DTB undervolt safety check
+DefaultDependencies=no
+After=local-fs.target
+Before=basic.target
+
+[Service]
+Type=oneshot
+ExecStart=$DTB_SAFETY_SCRIPT
+RemainAfterExit=yes
+
+[Install]
+WantedBy=basic.target
+EOF
+
+    # Late confirm service — removes BOOTING flag after successful boot
+    cat > "/etc/systemd/system/r36-dtb-confirm.service" << EOF
+[Unit]
+Description=R36 Tuner — DTB undervolt boot confirmed
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=$CONFIRM_SCRIPT
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable r36-dtb-safety.service >/dev/null 2>&1
+    systemctl enable r36-dtb-confirm.service >/dev/null 2>&1
+}
+
+TeardownDTBSafetyService() {
+    systemctl disable r36-dtb-safety.service >/dev/null 2>&1
+    systemctl disable r36-dtb-confirm.service >/dev/null 2>&1
+    rm -f "$DTB_SAFETY_SVC" "$DTB_SAFETY_SCRIPT"
+    rm -f "/etc/systemd/system/r36-dtb-confirm.service" "/usr/local/bin/r36-dtb-confirm.sh"
+    rm -f "$DTB_PENDING" "$DTB_BOOTING" "$DTB_RESTORED"
     systemctl daemon-reload
 }
 
@@ -528,6 +611,50 @@ VoltageMenu() {
 # ── DTB Undervolt ────────────────────────────────────────────────────────────
 
 DTBUndervoltMenu() {
+    # Top-level submenu — shown first, no heavy scanning yet
+    local DTB_QUICK=""
+    for f in /boot/rk3326-r36s-linux.dtb /boot/rk3326*.dtb /boot/*.dtb; do
+        [ -f "$f" ] && DTB_QUICK="$f" && break
+    done
+    local RESTORE_OPT=()
+    [ -n "$DTB_QUICK" ] && [ -f "${DTB_QUICK}.bak" ] && RESTORE_OPT=("restore" "Restore original backup")
+
+    local ACTION
+    ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+        --ok-label "Select" --cancel-label "Back" \
+        --menu "Permanent OPP voltage patch — reboot required" \
+        12 60 5 \
+        "patch"   "Patch voltages" \
+        "diag"    "Diagnose — disk vs kernel OPP" \
+        "help"    "Emergency recovery — if device won't boot" \
+        "${RESTORE_OPT[@]}" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$ACTION" ] && return
+
+    # Emergency recovery — no setup needed
+    if [ "$ACTION" = "help" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ EMERGENCY RECOVERY ]" \
+            --msgbox "IF DEVICE WON'T BOOT after DTB undervolt:\n\n1. Power off the R36S\n2. Remove the system SD card\n3. Plug SD into PC via card reader\n4. Open the FAT32 partition (= /boot)\n   If not visible: use DiskGenius (free)\n5. Inside /boot you will find:\n     rk3326-r36s-linux.dtb      <- bad\n     rk3326-r36s-linux.dtb.bak  <- original\n6. Copy .bak over .dtb (overwrite)\n7. Delete .r36_dtb_patch_booting if exists\n8. Eject SD, reinsert, boot\n\nThe .bak is always the pre-patch original.\nSafety service auto-restores if boot hangs\nbut cannot act if kernel panics early." \
+            24 62 > "$CURR_TTY"
+        return
+    fi
+
+    # Restore — only needs DTB path, no OPP scan
+    if [ "$ACTION" = "restore" ]; then
+        local DTB="$DTB_QUICK"
+        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --yesno "Restore original DTB from backup?\n\n${DTB}.bak → $DTB\n\nSafety service will also be disabled.\nReboot required." 11 55 > "$CURR_TTY"
+        if [ $? -eq 0 ]; then
+            cp "${DTB}.bak" "$DTB" && sync
+            TeardownDTBSafetyService
+            dialog --backtitle "$BACKTITLE" --title "✓ Restored" \
+                --yesno "Original DTB restored.\nSafety service disabled.\n\nReboot now?" 8 48 > "$CURR_TTY" && reboot
+        fi
+        return
+    fi
+
+    # Patch or Diagnose — need full setup from here
+
     # 1. Check tool
     if ! command -v fdtput >/dev/null 2>&1; then
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
@@ -543,10 +670,7 @@ DTBUndervoltMenu() {
     fi
 
     # 2. Find DTB
-    local DTB=""
-    for f in /boot/rk3326-r36s-linux.dtb /boot/rk3326*.dtb /boot/*.dtb; do
-        [ -f "$f" ] && DTB="$f" && break
-    done
+    local DTB="$DTB_QUICK"
     if [ -z "$DTB" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
             --msgbox "DTB file not found in /boot/" 6 45 > "$CURR_TTY"
@@ -554,19 +678,16 @@ DTBUndervoltMenu() {
     fi
 
     # 3. Find CPU OPP table node — try known names, then scan all root children
-    # RK3326 mainline DTB: node name is "opp-table-0"; BSP kernels vary
     local OPP_BASE=""
     for candidate in /opp-table-0 /cpu0-opp-table /cpu-opp-table /opp-table0 /opp-table; do
         fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && OPP_BASE="$candidate" && break
     done
-    # Fallback: scan root children with "opp" or "cpu" in name that have opp-* or opp@* children
     if [ -z "$OPP_BASE" ]; then
         while IFS= read -r node; do
             [ -z "$node" ] && continue
             fdtget -l "$DTB" "/$node" 2>/dev/null | grep -qE "^opp[@-]" && OPP_BASE="/$node" && break
         done < <(fdtget -l "$DTB" / 2>/dev/null | grep -iE "opp|cpu")
     fi
-    # Last resort: any root child with opp-* or opp@* children
     if [ -z "$OPP_BASE" ]; then
         while IFS= read -r node; do
             [ -z "$node" ] && continue
@@ -585,7 +706,7 @@ DTBUndervoltMenu() {
     local BIN_LEVEL; BIN_LEVEL=$(dmesg 2>/dev/null | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
     [ -n "$BIN_LEVEL" ] && OPP_BIN_PROP="opp-microvolt-${BIN_LEVEL}"
 
-    # 5. Read OPP entries using active bin property, fall back to opp-microvolt
+    # 5. Read OPP entries
     local NODES=() FREQS=() VOLTS=()
     while IFS= read -r node; do
         [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
@@ -606,40 +727,8 @@ DTBUndervoltMenu() {
         return
     fi
 
-    # 6. Build current table display
-    local BIN_INFO="opp-microvolt"
-    [ -n "$BIN_LEVEL" ] && BIN_INFO="opp-microvolt-${BIN_LEVEL} (chip bin: ${BIN_LEVEL})"
-    local TABLE="DTB: $(basename "$DTB")  |  Using: ${BIN_INFO}\n\nCurrent OPP voltages:\n"
-    for (( i=0; i<${#NODES[@]}; i++ )); do
-        local mhz=$(( ${FREQS[$i]} / 1000000 ))
-        local mv=$(( ${VOLTS[$i]} / 1000 ))
-        TABLE+="  ${mhz} MHz  →  ${mv} mV\n"
-    done
-    [ -f "${DTB}.bak" ] && TABLE+="\n[Backup exists: ${DTB}.bak]"
-
-    # 6. Restore option if backup exists
-    local RESTORE_OPT=()
-    [ -f "${DTB}.bak" ] && RESTORE_OPT=("restore" "Restore original backup")
-
-    # 7. Select offset
-    local OFFSET
-    OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-        --menu "$TABLE\nSelect voltage offset (applied to ALL entries):" \
-        26 60 9 \
-        "-100" "-100 mV  (aggressive)" \
-        "-75"  " -75 mV" \
-        "-50"  " -50 mV  (moderate)" \
-        "-25"  " -25 mV  (conservative)" \
-        "0"    "   0 mV  (read table only)" \
-        "+25"  " +25 mV" \
-        "+50"  " +50 mV  (restore margin)" \
-        "diag" "Diagnose — compare disk vs kernel OPP" \
-        "${RESTORE_OPT[@]}" \
-        2>&1 > "$CURR_TTY")
-    [ -z "$OFFSET" ] && return
-
     # Diagnose — compare DTB on disk vs kernel loaded
-    if [ "$OFFSET" = "diag" ]; then
+    if [ "$ACTION" = "diag" ]; then
         local DIAG="DTB file: $DTB\n\n"
         DIAG+="=== DISK (file being patched) ===\n"
         while IFS= read -r node; do
@@ -678,7 +767,6 @@ except: print('?')
         dialog --backtitle "$BACKTITLE" --title "[ DTB DIAGNOSE ]" \
             --msgbox "$DIAG" 28 60 > "$CURR_TTY"
 
-        # dmesg OPP log
         local DMESG; DMESG=$(dmesg 2>/dev/null | grep -iE "opp|dvfs|cpufreq|volt" | tail -30)
         [ -z "$DMESG" ] && DMESG="(no opp/dvfs entries in dmesg)"
         dialog --backtitle "$BACKTITLE" --title "[ DMESG — OPP/VOLT ]" \
@@ -686,20 +774,33 @@ except: print('?')
         return
     fi
 
-    # Restore backup
-    if [ "$OFFSET" = "restore" ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --yesno "Restore original DTB from backup?\n\n${DTB}.bak → $DTB\n\nReboot required." 10 55 > "$CURR_TTY"
-        if [ $? -eq 0 ]; then
-            cp "${DTB}.bak" "$DTB" && \
-                dialog --backtitle "$BACKTITLE" --title "✓ Restored" \
-                    --yesno "Original DTB restored.\n\nReboot now?" 7 45 > "$CURR_TTY" && reboot
-        fi
-        return
-    fi
+    # Patch — build table and show offset selector
+    local BIN_INFO="opp-microvolt"
+    [ -n "$BIN_LEVEL" ] && BIN_INFO="opp-microvolt-${BIN_LEVEL} (chip bin: ${BIN_LEVEL})"
+    local TABLE="DTB: $(basename "$DTB")  |  Using: ${BIN_INFO}\n\nCurrent OPP voltages:\n"
+    for (( i=0; i<${#NODES[@]}; i++ )); do
+        local mhz=$(( ${FREQS[$i]} / 1000000 ))
+        local mv=$(( ${VOLTS[$i]} / 1000 ))
+        TABLE+="  ${mhz} MHz  →  ${mv} mV\n"
+    done
+    [ -f "${DTB}.bak" ] && TABLE+="\n[Backup exists: ${DTB}.bak]"
+
+    local OFFSET
+    OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — PATCH ]" \
+        --menu "$TABLE\nSelect voltage offset (applied to ALL entries):" \
+        26 60 8 \
+        "-100" "-100 mV  (aggressive)" \
+        "-75"  " -75 mV" \
+        "-50"  " -50 mV  (moderate)" \
+        "-25"  " -25 mV  (conservative)" \
+        "0"    "   0 mV  (read table only)" \
+        "+25"  " +25 mV" \
+        "+50"  " +50 mV  (restore margin)" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$OFFSET" ] && return
     [ "$OFFSET" = "0" ] && return
 
-    # 8. Preview + confirm
+    # Preview + confirm
     local PREVIEW="Offset: ${OFFSET} mV\n\n"
     for (( i=0; i<${#NODES[@]}; i++ )); do
         local mhz=$(( ${FREQS[$i]} / 1000000 ))
@@ -708,14 +809,17 @@ except: print('?')
         [ $new_mv -lt 700 ] && new_mv=700
         PREVIEW+="  ${mhz} MHz: ${mv} → ${new_mv} mV\n"
     done
-    PREVIEW+="\nBackup: ${DTB}.bak  |  Reboot required."
+    local BAK_NOTE; [ -f "${DTB}.bak" ] && BAK_NOTE="Backup: ${DTB}.bak (existing)" || BAK_NOTE="Backup: ${DTB}.bak (will create)"
+    PREVIEW+="\n${BAK_NOTE}  |  Reboot required."
 
     dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — CONFIRM ]" \
         --yesno "$PREVIEW" 22 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    # 9. Backup + apply
-    cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
+    # Backup + apply — only create backup if none exists yet (preserve true original)
+    if [ ! -f "${DTB}.bak" ]; then
+        cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
+    fi
     dialog --infobox "Patching DTB..." 4 35 > "$CURR_TTY"
 
     local FAIL=0
@@ -735,8 +839,10 @@ except: print('?')
     done
 
     if [ $FAIL -eq 0 ]; then
+        touch "$DTB_PENDING"
+        SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ DTB Patched" \
-            --yesno "DTB patched successfully.\nBackup: ${DTB}.bak\n\nReboot now to apply?" 9 52 > "$CURR_TTY"
+            --yesno "DTB patched successfully.\nBackup: ${DTB}.bak\n\nSafety net active: if boot hangs, next boot\nauto-restores original DTB.\n\nReboot now to apply?" 11 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
@@ -1056,6 +1162,15 @@ if [ -f "${CONFIG_FILE}.failed" ]; then
         --yesno "Last boot: profile caused a hang and was auto-disabled.\n\nFailed config: ${CONFIG_FILE}.failed\n\nDelete the failed config file?" \
         11 62 > "$CURR_TTY"
     [ $? -eq 0 ] && rm -f "${CONFIG_FILE}.failed"
+fi
+
+# Warn if DTB undervolt caused instability and was auto-restored
+if [ -f "$DTB_RESTORED" ]; then
+    rm -f "$DTB_RESTORED"
+    TeardownDTBSafetyService
+    dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — AUTO-RESTORED ]" \
+        --msgbox "Previous DTB undervolt caused instability.\nOriginal DTB was restored automatically.\n\nSafety service has been disabled.\nTry a smaller voltage offset next time." \
+        10 58 > "$CURR_TTY"
 fi
 
 export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"

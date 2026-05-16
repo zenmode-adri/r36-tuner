@@ -1,5 +1,44 @@
 # Changelog
 
+## v2.4 — 2026-05-16
+
+**DTB undervolt — cinturón de seguridad:**
+- `SetupDTBSafetyService()`: instala dos servicios systemd tras aplicar un patch DTB
+  - `r36-dtb-safety.service` (before=basic.target): si detecta flag `BOOTING` de un boot anterior → restaura `.bak` automáticamente antes de arrancar userspace
+  - `r36-dtb-confirm.service` (after=multi-user.target): si el boot llegó a este punto, elimina el flag `BOOTING` (undervolt estable confirmado)
+- `TeardownDTBSafetyService()`: limpia servicios y flags al restaurar o tras auto-recovery
+- Al arrancar el tuner: detecta `DTB_RESTORED` y avisa al usuario con mensaje claro
+- Backup preserva el DTB **original**: `.bak` solo se crea si no existe — parches sucesivos no sobreescriben el original
+
+**DTB menu — reestructurado como submenú:**
+- Antes: Diagnose y Help enterrados al final de la lista de offsets (había que scrollar)
+- Ahora: submenú inicial con `Patch / Diagnose / Emergency Recovery / Restore` — todas las opciones visibles desde el primer nivel
+- El selector de offsets solo aparece al elegir Patch
+
+**Emergency Recovery:**
+- Nueva opción en menú DTB: instrucciones paso a paso para recuperar el dispositivo desde PC si no arranca
+- Misma información añadida al README en sección dedicada
+
+**README:**
+- DTB undervolt marcado como feature funcional (eliminado "work in progress")
+- Documentado OPP binning y detección de bin activo (L2)
+- Sección "Emergency Recovery" con procedimiento completo para recuperar desde SD card
+
+---
+
+## Gemini v7.0 — 2026-05-15 (THE SINGULARITY)
+
+The ultimate counter-strike. This version assimilates the permanent DTB patching technology (including bin-level detection) and introduces the first-ever automated Extreme Stress Test for the R36S.
+
+**The Singularity Features:**
+- **Extreme Stability:** Exclusive "Gruk Stress Test" (CPU burn + RAM write) with real-time 85°C thermal safety abort.
+- **Permanent Power:** Integrated DTB Patcher with automatic OPP-binning detection (`L0-L3`).
+- **Elite Metrics:** Score history tracking and baseline comparison system.
+- **Regulator IQ:** Dynamic voltage range detection reading sysfs hardware limits.
+- **Hyper-Compact:** Full feature parity with Claude v2.3 in under 260 lines of Gruk-optimized code.
+
+---
+
 ## v2.3 — 2026-05-16
 
 **DTB undervolt — OPP binning support:**
