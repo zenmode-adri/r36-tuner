@@ -584,10 +584,9 @@ DTBUndervoltMenu() {
         [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
         local freq_hz
         [[ "$node" == opp@* ]] && freq_hz="${node#opp@}" || freq_hz="${node#opp-}"
-        local volt_raw; volt_raw=$(fdtget "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
+        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
         [ -z "$volt_raw" ] && continue
         local volt_uv; volt_uv=$(echo "$volt_raw" | awk '{print $1}')
-        [[ "$volt_uv" =~ ^[0-9]+$ ]] || volt_uv=$(( volt_uv ))
         NODES+=("$OPP_BASE/$node")
         FREQS+=("$freq_hz")
         VOLTS+=("$volt_uv")
@@ -663,7 +662,7 @@ DTBUndervoltMenu() {
     local FAIL=0
     for (( i=0; i<${#NODES[@]}; i++ )); do
         local node="${NODES[$i]}"
-        local volt_raw; volt_raw=$(fdtget "$DTB" "$node" opp-microvolt 2>/dev/null)
+        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$node" opp-microvolt 2>/dev/null)
         local new_vals=""
         for uv in $volt_raw; do
             local mv=$(( uv / 1000 ))
