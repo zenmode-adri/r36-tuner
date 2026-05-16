@@ -667,6 +667,12 @@ except: print('?')
 
         dialog --backtitle "$BACKTITLE" --title "[ DTB DIAGNOSE ]" \
             --msgbox "$DIAG" 28 60 > "$CURR_TTY"
+
+        # dmesg OPP log
+        local DMESG; DMESG=$(dmesg 2>/dev/null | grep -iE "opp|dvfs|cpufreq|volt" | tail -30)
+        [ -z "$DMESG" ] && DMESG="(no opp/dvfs entries in dmesg)"
+        dialog --backtitle "$BACKTITLE" --title "[ DMESG — OPP/VOLT ]" \
+            --msgbox "$DMESG" 28 72 > "$CURR_TTY"
         return
     fi
 
