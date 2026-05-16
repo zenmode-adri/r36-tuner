@@ -840,8 +840,8 @@ BenchmarkCPU() {
     local TEMP; TEMP=$(GetTempC)
 
     # Save to scores log
-    printf "%s | %s MHz | %s mV | %s | sha256: %s | gzip: %s\n" \
-        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$SSL_DISP" "$GZIP_DISP" \
+    printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s | gzip: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" "$GZIP_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
