@@ -895,33 +895,30 @@ MonitorMenu() {
 
 BenchmarkCPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "sha256 + gzip 64 MB...\nPlease wait ~15s" 5 45 > "$CURR_TTY"
+        --infobox "sha256 + aes-256 via openssl...\nPlease wait ~15s" 5 45 > "$CURR_TTY"
 
-    # SHA256 — parse KB/s, convert to MB/s integer
+    # SHA256
     local SSL_KBS=0 SSL_DISP="N/A"
     if command -v openssl >/dev/null 2>&1; then
         local raw; raw=$(openssl speed sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
         if [ -n "$raw" ]; then
             SSL_KBS=$(echo "$raw" | awk '{printf "%d", $1}')
-            local ssl_mbs=$(( SSL_KBS / 1024 ))
-            SSL_DISP="${ssl_mbs} MB/s"
+            SSL_DISP="$(( SSL_KBS / 1024 )) MB/s"
         fi
     fi
 
-    # gzip
-    local GZIP_MBS=0 GZIP_DISP="N/A"
-    local T1 T2 TMS
-    T1=$(date +%s%N)
-    dd if=/dev/urandom bs=1M count=64 2>/dev/null | gzip -1 -c > /dev/null
-    T2=$(date +%s%N)
-    TMS=$(( (T2 - T1) / 1000000 ))
-    if [ $TMS -gt 0 ]; then
-        GZIP_MBS=$(( 64 * 1000 / TMS ))
-        GZIP_DISP="${GZIP_MBS} MB/s"
+    # AES-256-CBC
+    local AES_KBS=0 AES_DISP="N/A"
+    if command -v openssl >/dev/null 2>&1; then
+        local raw_aes; raw_aes=$(openssl speed aes-256-cbc 2>&1 | grep -i "aes-256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
+        if [ -n "$raw_aes" ]; then
+            AES_KBS=$(echo "$raw_aes" | awk '{printf "%d", $1}')
+            AES_DISP="$(( AES_KBS / 1024 )) MB/s"
+        fi
     fi
 
     # Score = sha256 MB/s (primary metric)
-    local SCORE=$( [ $SSL_KBS -gt 0 ] && echo $(( SSL_KBS / 1024 )) || echo $GZIP_MBS )
+    local SCORE=$([ $SSL_KBS -gt 0 ] && echo $(( SSL_KBS / 1024 )) || echo 0)
 
     # Relative score vs baseline
     local REL_DISP=""
@@ -935,7 +932,6 @@ BenchmarkCPU() {
             REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} MB/s)"
         fi
     else
-        # First run — auto-set as baseline
         echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
         REL_DISP="  Score: 100% (baseline set)"
     fi
@@ -945,13 +941,12 @@ BenchmarkCPU() {
     local GOV; GOV=$(GetGOV)
     local TEMP; TEMP=$(GetTempC)
 
-    # Save to scores log
-    printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s | gzip: %s\n" \
-        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" "$GZIP_DISP" \
+    printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s | aes256: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" "$AES_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256  : ${SSL_DISP}\ngzip    : ${GZIP_DISP}\n${REL_DISP}" \
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256  : ${SSL_DISP}\naes-256 : ${AES_DISP}\n${REL_DISP}" \
         11 62 > "$CURR_TTY"
 }
 
