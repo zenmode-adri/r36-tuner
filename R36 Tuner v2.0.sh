@@ -578,13 +578,19 @@ DTBUndervoltMenu() {
         return
     fi
 
-    # 4. Read OPP entries — supports both opp@<hz> (BSP) and opp-<hz> (mainline) naming
+    # 4. Detect active OPP bin level from dmesg (Rockchip opp-binning)
+    local OPP_BIN_PROP="opp-microvolt"
+    local BIN_LEVEL; BIN_LEVEL=$(dmesg 2>/dev/null | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+    [ -n "$BIN_LEVEL" ] && OPP_BIN_PROP="opp-microvolt-${BIN_LEVEL}"
+
+    # 5. Read OPP entries using active bin property, fall back to opp-microvolt
     local NODES=() FREQS=() VOLTS=()
     while IFS= read -r node; do
         [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
         local freq_hz
         [[ "$node" == opp@* ]] && freq_hz="${node#opp@}" || freq_hz="${node#opp-}"
-        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
+        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$OPP_BASE/$node" "$OPP_BIN_PROP" 2>/dev/null)
+        [ -z "$volt_raw" ] && volt_raw=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
         [ -z "$volt_raw" ] && continue
         local volt_uv; volt_uv=$(echo "$volt_raw" | awk '{print $1}')
         NODES+=("$OPP_BASE/$node")
@@ -598,8 +604,10 @@ DTBUndervoltMenu() {
         return
     fi
 
-    # 5. Build current table display
-    local TABLE="DTB: $(basename "$DTB")  |  OPP node: $OPP_BASE\n\nCurrent OPP voltages:\n"
+    # 6. Build current table display
+    local BIN_INFO="opp-microvolt"
+    [ -n "$BIN_LEVEL" ] && BIN_INFO="opp-microvolt-${BIN_LEVEL} (chip bin: ${BIN_LEVEL})"
+    local TABLE="DTB: $(basename "$DTB")  |  Using: ${BIN_INFO}\n\nCurrent OPP voltages:\n"
     for (( i=0; i<${#NODES[@]}; i++ )); do
         local mhz=$(( ${FREQS[$i]} / 1000000 ))
         local mv=$(( ${VOLTS[$i]} / 1000 ))
@@ -711,7 +719,8 @@ except: print('?')
     local FAIL=0
     for (( i=0; i<${#NODES[@]}; i++ )); do
         local node="${NODES[$i]}"
-        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$node" opp-microvolt 2>/dev/null)
+        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$node" "$OPP_BIN_PROP" 2>/dev/null)
+        [ -z "$volt_raw" ] && volt_raw=$(fdtget -t u "$DTB" "$node" opp-microvolt 2>/dev/null)
         local new_vals=""
         for uv in $volt_raw; do
             local mv=$(( uv / 1000 ))
@@ -720,7 +729,7 @@ except: print('?')
             new_vals+="$new_uv "
         done
         # shellcheck disable=SC2086
-        fdtput -t u "$DTB" "$node" opp-microvolt $new_vals 2>/dev/null || FAIL=1
+        fdtput -t u "$DTB" "$node" "$OPP_BIN_PROP" $new_vals 2>/dev/null || FAIL=1
     done
 
     if [ $FAIL -eq 0 ]; then
