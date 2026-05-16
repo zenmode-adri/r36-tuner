@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4 — 2026-05-16
+
+**Benchmark CPU — duración 60s:**
+- `openssl speed -seconds 60 sha256` en vez del default (~10s)
+- Da tiempo a que la temperatura se estabilice — útil para comparar thermal con/sin undervolt
+- Score resultante más preciso (más iteraciones promediadas)
+
+---
+
 ## v1.3 — 2026-05-16
 
 **Fix: pantalla negra al arrancar el tuner tras auto-restore de DTB:**

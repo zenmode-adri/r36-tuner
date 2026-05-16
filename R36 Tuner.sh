@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.3"
+VERSION="1.4"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -1010,11 +1010,11 @@ MonitorMenu() {
 
 BenchmarkCPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "sha256 via openssl...\nPlease wait ~10s" 5 40 > "$CURR_TTY"
+        --infobox "sha256 via openssl...\nPlease wait ~60s" 5 40 > "$CURR_TTY"
 
     local SSL_KBS=0 SSL_DISP="N/A"
     if command -v openssl >/dev/null 2>&1; then
-        local raw; raw=$(openssl speed sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
+        local raw; raw=$(openssl speed -seconds 60 sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
         if [ -n "$raw" ]; then
             SSL_KBS=$(echo "$raw" | awk '{printf "%d", $1}')
             SSL_DISP="$(( SSL_KBS / 1024 )) MB/s"
