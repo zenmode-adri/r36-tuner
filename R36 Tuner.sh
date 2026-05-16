@@ -1361,29 +1361,126 @@ GPUInfo() {
 }
 
 BenchmarkGPU() {
-    if ! command -v glmark2-es2-wayland >/dev/null 2>&1; then
-        dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-            --yesno "glmark2-es2-wayland no instalado.\n\n¿Instalar ahora? (incluido en el script, sin wifi)" 8 58 > "$CURR_TTY"
-        [ $? -ne 0 ] && return
-        InstallGlmark2 || return
-    fi
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "Running glmark2-es2-wayland...\nPlease wait ~30s" 5 45 > "$CURR_TTY"
-    local SCORE GL_LOG="/tmp/glmark2_out.txt"
-    local FB_RES
-    FB_RES=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null | tr ',' 'x')
-    [ -z "$FB_RES" ] && FB_RES="640x480"
-    WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} glmark2-es2-wayland --size "$FB_RES" > "$GL_LOG" 2>&1
-    SCORE=$(grep -i "glmark2 Score" "$GL_LOG" | awk '{print $NF}')
-    local GPU_DISP="${SCORE} pts"
-    if [ -z "$SCORE" ]; then
+        --infobox "GPU benchmark (EGL/GBM renderD128)...\nPlease wait ~15s" 5 48 > "$CURR_TTY"
+    local GL_LOG="/tmp/gpu_bench_out.txt"
+    python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
+import ctypes, ctypes.util, os, time, sys
+
+# Load libs
+try:
+    gbm_lib  = ctypes.CDLL("libgbm.so.1")
+    egl_lib  = ctypes.CDLL("libEGL.so.1")
+    gles_lib = ctypes.CDLL("libGLESv2.so.2")
+except OSError as e:
+    print(f"ERROR: lib load failed: {e}"); sys.exit(1)
+
+# Types
+c_i  = ctypes.c_int
+c_u  = ctypes.c_uint
+c_vp = ctypes.c_void_p
+c_f  = ctypes.c_float
+
+gbm_lib.gbm_create_device.restype  = c_vp
+gbm_lib.gbm_create_device.argtypes = [c_i]
+
+egl_lib.eglGetProcAddress.restype  = c_vp
+egl_lib.eglGetProcAddress.argtypes = [ctypes.c_char_p]
+egl_lib.eglInitialize.restype      = c_u
+egl_lib.eglChooseConfig.restype    = c_u
+egl_lib.eglCreateContext.restype   = c_vp
+egl_lib.eglCreatePbufferSurface.restype = c_vp
+egl_lib.eglMakeCurrent.restype     = c_u
+egl_lib.eglSwapBuffers.restype     = c_u
+
+EGL_PLATFORM_GBM = 0x31D7
+EGL_OPENGL_ES2   = 0x30A0
+EGL_NONE         = 0x3038
+EGL_SURFACE_TYPE = 0x3033
+EGL_PBUFFER_BIT  = 0x1
+EGL_RENDERABLE   = 0x3040
+EGL_ES2_BIT      = 0x4
+EGL_CTX_VER      = 0x3098
+EGL_WIDTH        = 0x3057
+EGL_HEIGHT       = 0x3056
+
+# Open render node (no DRM master needed)
+try:
+    fd = os.open("/dev/dri/renderD128", os.O_RDWR)
+except OSError as e:
+    print(f"ERROR: open renderD128: {e}"); sys.exit(1)
+
+gbm_dev = gbm_lib.gbm_create_device(fd)
+if not gbm_dev:
+    print("ERROR: gbm_create_device failed"); sys.exit(1)
+print(f"GBM device OK: {gbm_dev:#x}")
+
+# eglGetPlatformDisplayEXT
+fn_addr = egl_lib.eglGetProcAddress(b"eglGetPlatformDisplayEXT")
+if not fn_addr:
+    print("ERROR: eglGetPlatformDisplayEXT not found"); sys.exit(1)
+getPlatformDisplay = ctypes.CFUNCTYPE(c_vp, c_u, c_vp, c_vp)(fn_addr)
+disp = getPlatformDisplay(EGL_PLATFORM_GBM, c_vp(gbm_dev), None)
+if not disp:
+    print("ERROR: eglGetPlatformDisplayEXT returned NULL"); sys.exit(1)
+print(f"EGL display OK: {disp:#x}")
+
+major, minor = c_i(), c_i()
+if not egl_lib.eglInitialize(c_vp(disp), ctypes.byref(major), ctypes.byref(minor)):
+    print("ERROR: eglInitialize failed"); sys.exit(1)
+print(f"EGL {major.value}.{minor.value} initialized")
+
+egl_lib.eglBindAPI(EGL_OPENGL_ES2)
+cfg_attribs = (c_i*9)(EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+                       EGL_RENDERABLE, EGL_ES2_BIT,
+                       0x3024, 8, 0x3023, 8, EGL_NONE)
+cfg = c_vp(); ncfg = c_i()
+egl_lib.eglChooseConfig(c_vp(disp), cfg_attribs, ctypes.byref(cfg), 1, ctypes.byref(ncfg))
+if ncfg.value == 0:
+    print("ERROR: eglChooseConfig no configs"); sys.exit(1)
+print(f"EGL config OK")
+
+ctx_att = (c_i*3)(EGL_CTX_VER, 2, EGL_NONE)
+ctx = egl_lib.eglCreateContext(c_vp(disp), cfg, None, ctx_att)
+if not ctx:
+    print("ERROR: eglCreateContext failed"); sys.exit(1)
+
+pb_att = (c_i*5)(EGL_WIDTH, 256, EGL_HEIGHT, 256, EGL_NONE)
+surf = egl_lib.eglCreatePbufferSurface(c_vp(disp), cfg, pb_att)
+if not surf:
+    print("ERROR: eglCreatePbufferSurface failed"); sys.exit(1)
+
+if not egl_lib.eglMakeCurrent(c_vp(disp), c_vp(surf), c_vp(surf), c_vp(ctx)):
+    print("ERROR: eglMakeCurrent failed"); sys.exit(1)
+print("EGL context active — running benchmark...")
+
+# Benchmark: clear + swap N times, measure fps
+GL_COLOR_BUFFER_BIT = 0x4000
+gles_lib.glClearColor(c_f(0.2), c_f(0.4), c_f(0.8), c_f(1.0))
+N = 300
+t0 = time.monotonic()
+for _ in range(N):
+    gles_lib.glClear(GL_COLOR_BUFFER_BIT)
+    egl_lib.eglSwapBuffers(c_vp(disp), c_vp(surf))
+elapsed = time.monotonic() - t0
+fps = N / elapsed
+print(f"GPU Score: {int(fps)}")
+PYEOF
+    local SCORE
+    SCORE=$(grep "^GPU Score:" "$GL_LOG" | awk '{print $3}')
+    local GPU_DISP
+    if [ -n "$SCORE" ]; then
+        GPU_DISP="${SCORE} pts (EGL pbuffer clears/s)"
+        # Save score to history
+        echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=$(GetGPUMaxMHz)MHz vdd=$(GetRegVoltMV "$VDD_LOGIC")mV temp=$(GetTempC)C" >> "$SCORES_FILE"
+    else
         local GL_TAIL
-        GL_TAIL=$(tail -10 "$GL_LOG" | tr '\n' '|' | sed 's/|/\\n/g')
-        GPU_DISP="sin score — últimas líneas:\\n${GL_TAIL}"
+        GL_TAIL=$(grep "ERROR\|Traceback\|^GPU" "$GL_LOG" | tail -6 | tr '\n' '|' | sed 's/|/\\n/g')
+        GPU_DISP="sin score:\\n${GL_TAIL}"
     fi
     dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
-        --msgbox "Config: GPU $(GetGPUMaxMHz) MHz  vdd_logic: $(GetRegVoltMV "$VDD_LOGIC") mV\nTemp: $(GetTempC)°C\n\nglmark2: $GPU_DISP" \
-        14 70 > "$CURR_TTY"
+        --msgbox "Config: GPU $(GetGPUMaxMHz) MHz  vdd_logic: $(GetRegVoltMV "$VDD_LOGIC") mV\nTemp: $(GetTempC)°C\n\nGPU bench: $GPU_DISP" \
+        12 68 > "$CURR_TTY"
 }
 
 BenchmarkSetBaseline() {
@@ -1502,7 +1599,7 @@ BenchmarkMenu() {
                     21 62 9 \
                     1 "CPU           — sha256                (~60s)" \
                     2 "RAM           — 128MB r/w             (~8s)" \
-                    3 "GPU           — glmark2-wayland       (~30s)" \
+                    3 "GPU           — EGL/GBM bench         (~15s)" \
                     4 "All           — CPU + RAM + GPU" \
                     5 "CPU Stress    — 5min full load, abort 85°C" \
                     6 "Validate      — benchmark + stress + veredicto" \
