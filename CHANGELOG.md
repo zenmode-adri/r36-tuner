@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.9 — 2026-05-16
+
+**GPU Undervolt (DTB):**
+- Nueva opción en menú DTB: "GPU Undervolt — patch GPU OPP (vdd_logic)"
+- RK3326 Mali-400 tiene un único OPP a 520 MHz — stock L2: 1100 mV
+- Parchea todos los bins (L0/L1/L2/L3 + genérico) con el mismo offset relativo
+- Detección de bin GPU desde dmesg; fallback al bin CPU (mismo L2 en este dispositivo)
+- Descubrimiento automático del nodo GPU OPP en el DTB (`/gpu-opp-table` + scan)
+- Safety service reutilizado; backup protegido igual que CPU undervolt
+
 ## v1.8 — 2026-05-16
 
 **OC Experiment — 1608 MHz:**
