@@ -1345,6 +1345,17 @@ GPUInfo() {
     [ -n "$LIBS" ] && INFO+="Libs:\n${LIBS}\n" || INFO+="Libs: ninguna encontrada\n"
     # Mali device
     [ -e /dev/mali0 ] && INFO+="Mali dev: /dev/mali0\n" || INFO+="Mali dev: no /dev/mali0\n"
+    # SDL2 video driver
+    local SDL_DRV
+    SDL_DRV=$(strings /usr/lib/aarch64-linux-gnu/libSDL2*.so* 2>/dev/null | grep -o 'kmsdrm\|wayland\|x11\|fbdev' | sort -u | tr '\n' ' ')
+    [ -n "$SDL_DRV" ] && INFO+="SDL2 drivers: ${SDL_DRV}\n"
+    # GPU-capable binaries already on device
+    local BINS=""
+    for b in glmark2 glmark2-es2 kmscube es2gears retroarch ppsspp PPSSPPSDL; do
+        local P; P=$(command -v "$b" 2>/dev/null || find /opt /usr/bin /usr/local/bin -name "$b" -maxdepth 4 2>/dev/null | head -1)
+        [ -n "$P" ] && BINS+="$b: $P\n"
+    done
+    [ -n "$BINS" ] && INFO+="GPU bins:\n${BINS}" || INFO+="GPU bins: ninguno encontrado\n"
     dialog --backtitle "$BACKTITLE" --title "[ GPU INFO ]" \
         --msgbox "$(printf '%b' "$INFO")" 20 70 > "$CURR_TTY"
 }
