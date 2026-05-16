@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1 — 2026-05-16
+
+**CPU Stress Test:**
+- Nueva opción en Benchmark: 60s de carga sostenida con `openssl sha256` en bucle
+- Abort automático a 85°C con mensaje de advertencia
+- Muestra MHz, mV y temperatura pico al terminar — para validar estabilidad de undervolt
+
+**Benchmark simplificado:**
+- Eliminado gzip: bottleneck era `/dev/urandom` (RNG lento), no la CPU — resultados irreales
+- Eliminado AES-256: usa las mismas instrucciones ARMv8 crypto que SHA256, métrica redundante
+- Benchmark CPU = SHA256 solo: limpio, reproducible, consistente
+
+**Fix Diagnose:**
+- Diagnose mostraba `opp-microvolt` (tabla genérica ignorada por el kernel) en vez de `opp-microvolt-L2`
+- Mismo bug histórico que afectaba al patch antes de añadir soporte de binning
+- Ahora muestra los valores reales del bin activo tanto en disco como en kernel
+- Header indica qué propiedad está leyendo
+
+---
+
 ## v1.0 — 2026-05-16
 
 Primera versión estable. El proyecto hace lo que promete sin features críticas rotas.

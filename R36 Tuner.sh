@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v1.0 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v1.1 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.0"
+VERSION="1.1"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
