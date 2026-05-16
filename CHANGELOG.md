@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.3 — 2026-05-16
+
+**DTB undervolt — OPP binning support:**
+- Detecta nivel de bin activo desde dmesg (`pvtm-volt-sel`) → parchea `opp-microvolt-L2` (o el nivel correcto) en vez de `opp-microvolt` que el kernel ignoraba
+- La tabla en menú 7 muestra los voltajes del bin activo, no los genéricos
+- Diagnose muestra dmesg filtrado (opp/volt/dvfs) como segunda pantalla — útil sin teclado ni SSH
+
+**Benchmark — score relativo e historial:**
+- SHA256 ahora en MB/s (antes mostraba KB/s con decimales enormes)
+- Primera ejecución auto-establece baseline (100%)
+- Runs siguientes muestran % vs baseline con delta +/-
+- Cada run guardado en `/etc/r36_tuner_scores.log` con fecha, MHz, mV, governor, temp, sha256, gzip
+- Nuevas opciones en menú benchmark: Set Baseline, View History (últimos 20 runs)
+
+---
+
 ## v2.2 — 2026-05-16
 
 **DTB Undervolt fixes — verified against real dArkOSRE DTB:**
