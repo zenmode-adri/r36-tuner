@@ -8,7 +8,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - CPU governor selector (performance / schedutil / ondemand / conservative / powersave)
 - GPU max frequency selection
 - DMC / RAM max frequency selection
-- **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. Patches the active OPP bin (`opp-microvolt-L2` on most R36S units). Offsets from -100 mV to +50 mV. Reboot required.
+- **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Offsets from -100 mV to +50 mV. Reboot required.
 - **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
