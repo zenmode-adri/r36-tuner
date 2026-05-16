@@ -615,7 +615,7 @@ DTBUndervoltMenu() {
     local OFFSET
     OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
         --menu "$TABLE\nSelect voltage offset (applied to ALL entries):" \
-        26 60 8 \
+        26 60 9 \
         "-100" "-100 mV  (aggressive)" \
         "-75"  " -75 mV" \
         "-50"  " -50 mV  (moderate)" \
@@ -623,9 +623,52 @@ DTBUndervoltMenu() {
         "0"    "   0 mV  (read table only)" \
         "+25"  " +25 mV" \
         "+50"  " +50 mV  (restore margin)" \
+        "diag" "Diagnose — compare disk vs kernel OPP" \
         "${RESTORE_OPT[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$OFFSET" ] && return
+
+    # Diagnose — compare DTB on disk vs kernel loaded
+    if [ "$OFFSET" = "diag" ]; then
+        local DIAG="DTB file: $DTB\n\n"
+        DIAG+="=== DISK (file being patched) ===\n"
+        while IFS= read -r node; do
+            [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
+            local freq_hz; [[ "$node" == opp@* ]] && freq_hz="${node#opp@}" || freq_hz="${node#opp-}"
+            local mhz=$(( freq_hz / 1000000 ))
+            local vr; vr=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null | awk '{print $1}')
+            local mv=$(( vr / 1000 ))
+            DIAG+="  ${mhz} MHz → ${mv} mV\n"
+        done < <(fdtget -l "$DTB" "$OPP_BASE" 2>/dev/null | sort)
+
+        DIAG+="\n=== KERNEL (current boot) ===\n"
+        local PROC_OPP=""
+        for p in /proc/device-tree/cpu0-opp-table /proc/device-tree/opp-table-0 /proc/device-tree/opp-table; do
+            [ -d "$p" ] && PROC_OPP="$p" && break
+        done
+        if [ -n "$PROC_OPP" ]; then
+            for entry in $(ls -d "$PROC_OPP"/opp-*/ 2>/dev/null | sort); do
+                local node_name; node_name=$(basename "$entry")
+                local freq_hz; [[ "$node_name" == opp@* ]] && freq_hz="${node_name#opp@}" || freq_hz="${node_name#opp-}"
+                local mhz=$(( freq_hz / 1000000 ))
+                local mv; mv=$(python3 -c "
+import struct
+try:
+    d=open('${entry}opp-microvolt','rb').read()
+    print(struct.unpack('>I',d[:4])[0]//1000)
+except: print('?')
+" 2>/dev/null)
+                DIAG+="  ${mhz} MHz → ${mv} mV\n"
+            done
+        else
+            DIAG+="  /proc/device-tree OPP node not found\n"
+            DIAG+="  Checked: cpu0-opp-table, opp-table-0, opp-table\n"
+        fi
+
+        dialog --backtitle "$BACKTITLE" --title "[ DTB DIAGNOSE ]" \
+            --msgbox "$DIAG" 28 60 > "$CURR_TTY"
+        return
+    fi
 
     # Restore backup
     if [ "$OFFSET" = "restore" ]; then
