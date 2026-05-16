@@ -11,6 +11,11 @@ CONFIG_FILE="/etc/r36_tuner.ini"
 BOOT_SCRIPT="/usr/local/bin/r36-tuner-apply.sh"
 SVC_FILE="/etc/systemd/system/r36-tuner.service"
 PANIC_FLAG="/etc/.r36_tuner_panic"
+DTB_PENDING="/boot/.r36_dtb_patch_pending"
+DTB_BOOTING="/boot/.r36_dtb_patch_booting"
+DTB_RESTORED="/boot/.r36_dtb_restored"
+DTB_SAFETY_SCRIPT="/usr/local/bin/r36-dtb-safety.sh"
+DTB_SAFETY_SVC="/etc/systemd/system/r36-dtb-safety.service"
 
 export TERM=linux
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -546,14 +551,29 @@ DTBUndervoltMenu() {
         return
     fi
 
-    # 3. Find OPP table node
+    # 3. Find CPU OPP table node — try known names, then scan all root children
     local OPP_BASE=""
-    for candidate in /opp-table0 /opp-table /cpu-opp-table; do
+    for candidate in /cpu0-opp-table /cpu-opp-table /opp-table0 /opp-table; do
         fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && OPP_BASE="$candidate" && break
     done
+    # Fallback: scan root children whose name contains "cpu" or "opp" for opp@ entries
     if [ -z "$OPP_BASE" ]; then
+        while IFS= read -r node; do
+            [ -z "$node" ] && continue
+            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -q "^opp@" && OPP_BASE="/$node" && break
+        done < <(fdtget -l "$DTB" / 2>/dev/null | grep -iE "opp|cpu")
+    fi
+    # Last resort: any root child with opp@ children
+    if [ -z "$OPP_BASE" ]; then
+        while IFS= read -r node; do
+            [ -z "$node" ] && continue
+            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -q "^opp@" && OPP_BASE="/$node" && break
+        done < <(fdtget -l "$DTB" / 2>/dev/null)
+    fi
+    if [ -z "$OPP_BASE" ]; then
+        local ROOT_NODES; ROOT_NODES=$(fdtget -l "$DTB" / 2>/dev/null | tr '\n' ' ')
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --msgbox "OPP table not found in DTB.\nCannot proceed." 7 48 > "$CURR_TTY"
+            --msgbox "OPP table not found in DTB.\n\nRoot nodes scanned:\n$ROOT_NODES" 10 60 > "$CURR_TTY"
         return
     fi
 
