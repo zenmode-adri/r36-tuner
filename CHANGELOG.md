@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5 — 2026-05-16
+
+**CPU Stress — duración 5 minutos:**
+- Aumentado de 60s a 300s para detectar inestabilidad térmica real bajo carga sostenida
+- Abort a 85°C conservado
+
+---
+
 ## v1.4 — 2026-05-16
 
 **Benchmark CPU — duración 60s:**

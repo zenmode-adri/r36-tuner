@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.4"
+VERSION="1.5"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -1117,11 +1117,11 @@ BenchmarkViewHistory() {
 }
 
 StressTestCPU() {
-    local DURATION=60
+    local DURATION=300
     local END=$(( $(date +%s) + DURATION ))
     local MAX_TEMP=0 ITER=0
     dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS TEST ]" \
-        --infobox "Burning CPU for ${DURATION}s via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 7 52 > "$CURR_TTY"
+        --infobox "Burning CPU for ${DURATION}s (5 min) via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 7 52 > "$CURR_TTY"
 
     while [ "$(date +%s)" -lt "$END" ]; do
         local T; T=$(GetTempC)
@@ -1153,7 +1153,7 @@ BenchmarkMenu() {
                     2 "RAM       — 128MB r/w          (~8s)" \
                     3 "GPU       — glmark2            (~30s)" \
                     4 "All       — CPU + RAM + GPU" \
-                    5 "CPU Stress — 60s full load, abort at 85°C" \
+                    5 "CPU Stress — 5min full load, abort at 85°C" \
                     6 "Set Baseline  — mark next CPU run as 100%" \
                     7 "View History  — last 20 CPU scores" \
                     8 "Back" \
