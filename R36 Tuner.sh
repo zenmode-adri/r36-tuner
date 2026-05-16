@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.6"
+VERSION="1.7"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -50,6 +50,12 @@ VDD_ARM=$(FindRegulatorDir "vdd_arm")
 VDD_LOGIC=$(FindRegulatorDir "vdd_logic")
 VCC_DDR=$(FindRegulatorDir "vcc_ddr")
 
+# Detect active OPP bin level — used by GetDTBStatus and DTBUndervoltMenu
+DTB_STATUS_PROP="opp-microvolt"
+_dtb_bin=$(dmesg 2>/dev/null | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+[ -n "$_dtb_bin" ] && DTB_STATUS_PROP="opp-microvolt-${_dtb_bin}"
+unset _dtb_bin
+
 # Detect gptokeyb — prefer system PATH, fall back to dArkOSRE location
 GPTOKEYB_BIN=$(command -v gptokeyb 2>/dev/null || echo "/opt/inttools/gptokeyb")
 GPTOKEYB_CFG="/opt/inttools/keys.gptk"
@@ -80,6 +86,21 @@ GetDMCMaxMHz()  { [ -z "$DMC_DEVFREQ" ] && echo "N/A" && return; local f; f=$(ca
 GetTempC()      { local t; t=$(cat "$TEMP_ZONE" 2>/dev/null); [ -n "$t" ] && echo $((t/1000)) || echo "N/A"; }
 GetGOV()        { cat "$CPU_POLICY/scaling_governor" 2>/dev/null || echo "N/A"; }
 GetRegVoltMV()  { local d="$1"; [ -z "$d" ] && echo "N/A" && return; local u; u=$(cat "$d/microvolts" 2>/dev/null); [ -n "$u" ] && echo $((u/1000)) || echo "N/A"; }
+
+GetDTBStatus() {
+    local DTB="/boot/rk3326-r36s-linux.dtb"
+    [ ! -f "${DTB}.bak" ] && echo "stock" && return
+    command -v fdtget >/dev/null 2>&1 || { echo "patched"; return; }
+    local cur_uv bak_uv
+    cur_uv=$(fdtget -t u "$DTB" /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
+    bak_uv=$(fdtget -t u "${DTB}.bak" /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
+    [ -z "$cur_uv" ] || [ -z "$bak_uv" ] && { echo "patched"; return; }
+    local delta_mv=$(( (cur_uv - bak_uv) / 1000 ))
+    local cur_mv=$(( cur_uv / 1000 ))
+    [ "$delta_mv" -lt 0 ] && echo "${delta_mv}mV (${cur_mv}mV)" && return
+    [ "$delta_mv" -gt 0 ] && echo "+${delta_mv}mV (${cur_mv}mV)" && return
+    echo "patched"
+}
 
 GetCPUAvail()   { cat "$CPU_POLICY/scaling_available_frequencies" 2>/dev/null | tr ' ' '\n' | sort -rn | grep -v '^$'; }
 GetGPUAvail()   { [ -z "$GPU_DEVFREQ" ] && return; cat "$GPU_DEVFREQ/available_frequencies" 2>/dev/null | tr ' ' '\n' | sort -rn | grep -v '^$'; }
@@ -969,10 +990,18 @@ else: print('?')
 # ── Real-Time Monitor ─────────────────────────────────────────────────────────
 
 MonitorMenu() {
+    local PREV_TEMP="" TREND="→"
     while true; do
         local TEMP; TEMP=$(GetTempC)
-        local TEMP_DISP="${TEMP}°C"
-        [[ "$TEMP" =~ ^[0-9]+$ ]] && [ "$TEMP" -ge 80 ] && TEMP_DISP="${TEMP}°C [HOT!]"
+        if [[ "$TEMP" =~ ^[0-9]+$ ]] && [[ "$PREV_TEMP" =~ ^[0-9]+$ ]]; then
+            if   [ "$TEMP" -gt $(( PREV_TEMP + 1 )) ]; then TREND="↑"
+            elif [ "$TEMP" -lt $(( PREV_TEMP - 1 )) ]; then TREND="↓"
+            else TREND="→"
+            fi
+        fi
+        PREV_TEMP="$TEMP"
+        local TEMP_DISP="${TEMP}°C ${TREND}"
+        [[ "$TEMP" =~ ^[0-9]+$ ]] && [ "$TEMP" -ge 80 ] && TEMP_DISP="${TEMP}°C ${TREND} [HOT!]"
 
         local INFO
         INFO=$(printf \
@@ -1135,28 +1164,68 @@ BenchmarkClearHistory() {
 }
 
 StressTestCPU() {
+    local SILENT="${1:-0}"
     local DURATION=300
     local END=$(( $(date +%s) + DURATION ))
-    local MAX_TEMP=0 ITER=0
+    local MAX_TEMP=0 MIN_TEMP=999 TEMP_SUM=0 TEMP_COUNT=0
     dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS TEST ]" \
         --infobox "Burning CPU for ${DURATION}s (5 min) via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 7 52 > "$CURR_TTY"
 
     while [ "$(date +%s)" -lt "$END" ]; do
         local T; T=$(GetTempC)
-        if [[ "$T" =~ ^[0-9]+$ ]] && [ "$T" -ge 85 ]; then
-            dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — ABORTED ]" \
-                --msgbox "THERMAL ABORT at ${T}°C\n\nUndervolt may be unstable at this load.\nTry a smaller offset." 9 50 > "$CURR_TTY"
-            return
+        if [[ "$T" =~ ^[0-9]+$ ]]; then
+            if [ "$T" -ge 85 ]; then
+                dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — ABORTED ]" \
+                    --msgbox "THERMAL ABORT at ${T}°C\n\nUndervolt may be unstable at this load.\nTry a smaller offset." 9 50 > "$CURR_TTY"
+                return 1
+            fi
+            [ "$T" -gt "$MAX_TEMP" ] && MAX_TEMP=$T
+            [ "$T" -lt "$MIN_TEMP" ] && MIN_TEMP=$T
+            TEMP_SUM=$(( TEMP_SUM + T ))
+            TEMP_COUNT=$(( TEMP_COUNT + 1 ))
         fi
-        [[ "$T" =~ ^[0-9]+$ ]] && [ "$T" -gt "$MAX_TEMP" ] && MAX_TEMP=$T
         openssl speed sha256 >/dev/null 2>&1
-        ITER=$(( ITER + 1 ))
     done
+
+    local AVG_TEMP=0
+    [ $TEMP_COUNT -gt 0 ] && AVG_TEMP=$(( TEMP_SUM / TEMP_COUNT ))
+    [ "$MIN_TEMP" -eq 999 ] && MIN_TEMP="N/A"
 
     local MHZ; MHZ=$(GetCPUMaxMHz)
     local MV; MV=$(GetRegVoltMV "$VDD_ARM")
-    dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — PASSED ]" \
-        --msgbox "STABLE — ${DURATION}s at full CPU load\n\n${MHZ} MHz  |  ${MV} mV  |  peak ${MAX_TEMP}°C\n\nUndervolt appears stable." 9 52 > "$CURR_TTY"
+    [ "$SILENT" = "0" ] && dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — PASSED ]" \
+        --msgbox "STABLE — ${DURATION}s at full CPU load\n\n${MHZ} MHz  |  ${MV} mV\nTemp: min ${MIN_TEMP}°C  avg ${AVG_TEMP}°C  peak ${MAX_TEMP}°C\n\nUndervolt appears stable." 10 54 > "$CURR_TTY"
+
+    STRESS_MIN_TEMP="$MIN_TEMP"
+    STRESS_AVG_TEMP="$AVG_TEMP"
+    STRESS_MAX_TEMP="$MAX_TEMP"
+    return 0
+}
+
+ValidateUndervolt() {
+    local DTB_ST; DTB_ST=$(GetDTBStatus)
+    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE UNDERVOLT ]" \
+        --yesno "Run full undervolt validation?\n\nDTB: ${DTB_ST}\n\nSteps:\n  1. CPU Benchmark  (~60s)\n  2. CPU Stress test (~5 min)\n\nTotal: ~6 minutes. Do not interrupt." \
+        14 52 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    BenchmarkCPU
+
+    STRESS_MIN_TEMP="" STRESS_AVG_TEMP="" STRESS_MAX_TEMP=""
+    StressTestCPU 1
+    local STRESS_OK=$?
+
+    local MHZ; MHZ=$(GetCPUMaxMHz)
+    local MV; MV=$(GetRegVoltMV "$VDD_ARM")
+    local VERDICT
+    if [ $STRESS_OK -eq 0 ]; then
+        VERDICT="✓ STABLE — undervolt validated"
+    else
+        VERDICT="✗ FAILED — thermal abort during stress"
+    fi
+    dialog --backtitle "$BACKTITLE" --title "[ VALIDATION COMPLETE ]" \
+        --msgbox "${VERDICT}\n\n${MHZ} MHz  |  ${MV} mV\nDTB: ${DTB_ST}\nTemp: min ${STRESS_MIN_TEMP}°C  avg ${STRESS_AVG_TEMP}°C  peak ${STRESS_MAX_TEMP}°C" \
+        11 54 > "$CURR_TTY"
 }
 
 BenchmarkMenu() {
@@ -1166,16 +1235,16 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    19 62 9 \
-                    1 "CPU       — sha256             (~60s)" \
-                    2 "RAM       — 128MB r/w          (~8s)" \
-                    3 "GPU       — glmark2            (~30s)" \
-                    4 "All       — CPU + RAM + GPU" \
-                    5 "CPU Stress — 5min full load, abort at 85°C" \
-                    6 "Set Baseline  — mark next CPU run as 100%" \
-                    7 "View History  — scrollable, all entries" \
-                    8 "Clear History — delete log and baseline" \
-                    9 "Back" \
+                    21 62 9 \
+                    1 "CPU           — sha256                (~60s)" \
+                    2 "RAM           — 128MB r/w             (~8s)" \
+                    3 "GPU           — glmark2               (~30s)" \
+                    4 "All           — CPU + RAM + GPU" \
+                    5 "CPU Stress    — 5min full load, abort 85°C" \
+                    6 "Validate      — benchmark + stress + veredicto" \
+                    7 "Set Baseline  — mark next CPU run as 100%" \
+                    8 "View History  — scrollable, all entries" \
+                    9 "Clear History — delete log and baseline" \
                     2>&1 > "$CURR_TTY")
     [ $? -ne 0 ] && return
     case $CHOICE in
@@ -1184,9 +1253,10 @@ BenchmarkMenu() {
         3) BenchmarkGPU ;;
         4) BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
         5) StressTestCPU ;;
-        6) BenchmarkSetBaseline ;;
-        7) BenchmarkViewHistory ;;
-        8) BenchmarkClearHistory ;;
+        6) ValidateUndervolt ;;
+        7) BenchmarkSetBaseline ;;
+        8) BenchmarkViewHistory ;;
+        9) BenchmarkClearHistory ;;
     esac
 }
 
@@ -1265,7 +1335,7 @@ MainMenu() {
                         4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
                         5  "DMC / RAM Tuning    ($(GetDMCMaxMHz) MHz)" \
                         6  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
-                        7  "DTB Undervolt       (permanent, needs reboot)" \
+                        7  "DTB Undervolt       ($(GetDTBStatus))" \
                         8  "Real-Time Monitor   ($(GetTempC)°C)" \
                         9  "Benchmark" \
                         10 "Save Profile (boot) [${PROF_STATUS}]" \

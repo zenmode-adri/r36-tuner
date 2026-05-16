@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.7 — 2026-05-16
+
+**Estado DTB en menú principal:**
+- Item 7 muestra el delta de voltaje activo: `stock`, `-125mV (1175mV)`, etc.
+- Se detecta comparando DTB actual vs .bak en el OPP de 1512 MHz
+- Se actualiza cada vez que se vuelve al menú principal
+
+**Validate Undervolt (nuevo flujo guiado):**
+- Benchmark CPU (60s) → Stress 5min → veredicto STABLE/FAILED en un solo paso
+- Muestra DTB activo, MHz, mV y temperaturas (min/avg/peak) en el resumen final
+
+**Stress test — estadísticas de temperatura:**
+- Ahora registra min, promedio y pico durante los 5 minutos
+- Resultado: `min 42°C  avg 48°C  peak 54°C`
+
+**Monitor — tendencia de temperatura:**
+- Flecha ↑↓→ junto a la temperatura: indica si lleva subiendo, bajando o estable
+- Umbral ±1°C para evitar ruido en lecturas estables
+
+---
+
 ## v1.6 — 2026-05-16
 
 **Benchmark — historial scrollable y borrable:**
