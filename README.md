@@ -25,11 +25,11 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 
 ## Installation
 
-Copy `R36 Tuner v2.0.sh` to `/opt/system/` on your device:
+Copy `R36 Tuner.sh` to `/opt/system/` on your device:
 
 ```bash
-scp "R36 Tuner v2.0.sh" ark@<device-ip>:/opt/system/
-ssh ark@<device-ip> "chmod +x '/opt/system/R36 Tuner v2.0.sh'"
+scp "R36 Tuner.sh" ark@<device-ip>:/opt/system/
+ssh ark@<device-ip> "chmod +x '/opt/system/R36 Tuner.sh'"
 ```
 
 Then launch it from the dArkOSRE system menu.

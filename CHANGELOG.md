@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0 — 2026-05-16
+
+Primera versión estable. El proyecto hace lo que promete sin features críticas rotas.
+
+- Archivo renombrado de `R36 Tuner v2.0.sh` a `R36 Tuner.sh` — la versión vive dentro del script
+- Versioning reseteado a 1.0: la numeración 2.x era interna de desarrollo, esta es la primera release oficial
+
+Incluye todo lo desarrollado en las fases 2.0–2.4:
+CPU/GPU/DMC tuning, voltage menu, DTB undervolt con detección de bin OPP, safety service anti-bootloop, benchmarks con historial y baseline, boot profile con panic-flag, monitor en tiempo real.
+
+---
+
 ## v2.4 — 2026-05-16
 
 **DTB undervolt — cinturón de seguridad:**
