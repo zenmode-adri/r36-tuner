@@ -11,6 +11,8 @@ CONFIG_FILE="/etc/r36_tuner.ini"
 BOOT_SCRIPT="/usr/local/bin/r36-tuner-apply.sh"
 SVC_FILE="/etc/systemd/system/r36-tuner.service"
 PANIC_FLAG="/etc/.r36_tuner_panic"
+SCORES_FILE="/etc/r36_tuner_scores.log"
+BASELINE_FILE="/etc/r36_tuner_baseline"
 DTB_PENDING="/boot/.r36_dtb_patch_pending"
 DTB_BOOTING="/boot/.r36_dtb_patch_booting"
 DTB_RESTORED="/boot/.r36_dtb_restored"
@@ -789,23 +791,62 @@ BenchmarkCPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
         --infobox "sha256 + gzip 64 MB...\nPlease wait ~15s" 5 45 > "$CURR_TTY"
 
-    local SSL="openssl not found"
+    # SHA256 — parse KB/s, convert to MB/s integer
+    local SSL_KBS=0 SSL_DISP="N/A"
     if command -v openssl >/dev/null 2>&1; then
         local raw; raw=$(openssl speed sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
-        [ -n "$raw" ] && SSL="$raw" || SSL="N/A"
+        if [ -n "$raw" ]; then
+            SSL_KBS=$(echo "$raw" | awk '{printf "%d", $1}')
+            local ssl_mbs=$(( SSL_KBS / 1024 ))
+            SSL_DISP="${ssl_mbs} MB/s"
+        fi
     fi
 
-    local GZIP="N/A"
+    # gzip
+    local GZIP_MBS=0 GZIP_DISP="N/A"
     local T1 T2 TMS
     T1=$(date +%s%N)
     dd if=/dev/urandom bs=1M count=64 2>/dev/null | gzip -1 -c > /dev/null
     T2=$(date +%s%N)
     TMS=$(( (T2 - T1) / 1000000 ))
-    [ $TMS -gt 0 ] && GZIP="$(( 64 * 1000 / TMS )) MB/s"
+    if [ $TMS -gt 0 ]; then
+        GZIP_MBS=$(( 64 * 1000 / TMS ))
+        GZIP_DISP="${GZIP_MBS} MB/s"
+    fi
+
+    # Score = sha256 MB/s (primary metric)
+    local SCORE=$( [ $SSL_KBS -gt 0 ] && echo $(( SSL_KBS / 1024 )) || echo $GZIP_MBS )
+
+    # Relative score vs baseline
+    local REL_DISP=""
+    if [ -f "$BASELINE_FILE" ]; then
+        local BASE; BASE=$(cat "$BASELINE_FILE" 2>/dev/null)
+        if [ -n "$BASE" ] && [ "$BASE" -gt 0 ] 2>/dev/null; then
+            local PCT=$(( SCORE * 100 / BASE ))
+            local DIFF=$(( PCT - 100 ))
+            local SIGN="+"
+            [ $DIFF -lt 0 ] && SIGN=""
+            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} MB/s)"
+        fi
+    else
+        # First run — auto-set as baseline
+        echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
+        REL_DISP="  Score: 100% (baseline set)"
+    fi
+
+    local MHZ; MHZ=$(GetCPUMaxMHz)
+    local MV; MV=$(GetRegVoltMV "$VDD_ARM")
+    local GOV; GOV=$(GetGOV)
+    local TEMP; TEMP=$(GetTempC)
+
+    # Save to scores log
+    printf "%s | %s MHz | %s mV | %s | sha256: %s | gzip: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$SSL_DISP" "$GZIP_DISP" \
+        >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: $(GetCPUMaxMHz) MHz  vdd_arm: $(GetRegVoltMV "$VDD_ARM") mV  gov: $(GetGOV)\nTemp: $(GetTempC)°C\n\nsha256    : $SSL\ngzip      : $GZIP" \
-        10 62 > "$CURR_TTY"
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256  : ${SSL_DISP}\ngzip    : ${GZIP_DISP}\n${REL_DISP}" \
+        11 62 > "$CURR_TTY"
 }
 
 BenchmarkRAM() {
@@ -849,6 +890,29 @@ BenchmarkGPU() {
         8 58 > "$CURR_TTY"
 }
 
+BenchmarkSetBaseline() {
+    dialog --backtitle "$BACKTITLE" --title "[ SET BASELINE ]" \
+        --yesno "Run CPU benchmark now and save result as baseline (100%)?\n\nThis will replace any existing baseline." 8 55 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+    rm -f "$BASELINE_FILE"
+    BenchmarkCPU
+}
+
+BenchmarkViewHistory() {
+    if [ ! -f "$SCORES_FILE" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ SCORE HISTORY ]" \
+            --msgbox "No scores recorded yet.\nRun a CPU benchmark first." 7 50 > "$CURR_TTY"
+        return
+    fi
+    local BASE=""
+    [ -f "$BASELINE_FILE" ] && BASE=$(cat "$BASELINE_FILE" 2>/dev/null)
+    local HEADER="CPU Score History"
+    [ -n "$BASE" ] && HEADER+="  (baseline: ${BASE} MB/s = 100%)"
+    local CONTENT; CONTENT=$(tail -20 "$SCORES_FILE")
+    dialog --backtitle "$BACKTITLE" --title "[ $HEADER ]" \
+        --msgbox "$CONTENT" 24 78 > "$CURR_TTY"
+}
+
 BenchmarkMenu() {
     local CHOICE
     CHOICE=$(dialog --backtitle "$BACKTITLE" \
@@ -856,12 +920,14 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    13 58 5 \
-                    1 "CPU  — openssl sha256 + gzip (~15s)" \
-                    2 "RAM  — 128MB write/read via /dev/shm (~8s)" \
-                    3 "GPU  — glmark2-es2-fbdev (~30s)" \
-                    4 "All  — CPU + RAM + GPU in sequence" \
-                    5 "Back" \
+                    16 62 8 \
+                    1 "CPU       — sha256 + gzip  (~15s)" \
+                    2 "RAM       — 128MB r/w       (~8s)" \
+                    3 "GPU       — glmark2         (~30s)" \
+                    4 "All       — CPU + RAM + GPU" \
+                    5 "Set Baseline  — mark next CPU run as 100%" \
+                    6 "View History  — last 20 CPU scores" \
+                    7 "Back" \
                     2>&1 > "$CURR_TTY")
     [ $? -ne 0 ] && return
     case $CHOICE in
@@ -869,6 +935,8 @@ BenchmarkMenu() {
         2) BenchmarkRAM ;;
         3) BenchmarkGPU ;;
         4) BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
+        5) BenchmarkSetBaseline ;;
+        6) BenchmarkViewHistory ;;
     esac
 }
 
