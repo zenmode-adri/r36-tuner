@@ -729,18 +729,21 @@ DTBUndervoltMenu() {
 
     # Diagnose — compare DTB on disk vs kernel loaded
     if [ "$ACTION" = "diag" ]; then
-        local DIAG="DTB file: $DTB\n\n"
-        DIAG+="=== DISK (file being patched) ===\n"
+        local BIN_INFO="opp-microvolt"
+        [ -n "$BIN_LEVEL" ] && BIN_INFO="opp-microvolt-${BIN_LEVEL} (bin: ${BIN_LEVEL})"
+        local DIAG="DTB file: $DTB\nActive prop: ${BIN_INFO}\n\n"
+        DIAG+="=== DISK (${OPP_BIN_PROP}) ===\n"
         while IFS= read -r node; do
             [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
             local freq_hz; [[ "$node" == opp@* ]] && freq_hz="${node#opp@}" || freq_hz="${node#opp-}"
             local mhz=$(( freq_hz / 1000000 ))
-            local vr; vr=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null | awk '{print $1}')
+            local vr; vr=$(fdtget -t u "$DTB" "$OPP_BASE/$node" "$OPP_BIN_PROP" 2>/dev/null | awk '{print $1}')
+            [ -z "$vr" ] && vr=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null | awk '{print $1}')
             local mv=$(( vr / 1000 ))
             DIAG+="  ${mhz} MHz → ${mv} mV\n"
         done < <(fdtget -l "$DTB" "$OPP_BASE" 2>/dev/null | sort)
 
-        DIAG+="\n=== KERNEL (current boot) ===\n"
+        DIAG+="\n=== KERNEL (current boot, ${OPP_BIN_PROP}) ===\n"
         local PROC_OPP=""
         for p in /proc/device-tree/cpu0-opp-table /proc/device-tree/opp-table-0 /proc/device-tree/opp-table; do
             [ -d "$p" ] && PROC_OPP="$p" && break
@@ -751,11 +754,18 @@ DTBUndervoltMenu() {
                 local freq_hz; [[ "$node_name" == opp@* ]] && freq_hz="${node_name#opp@}" || freq_hz="${node_name#opp-}"
                 local mhz=$(( freq_hz / 1000000 ))
                 local mv; mv=$(python3 -c "
-import struct
-try:
-    d=open('${entry}opp-microvolt','rb').read()
-    print(struct.unpack('>I',d[:4])[0]//1000)
-except: print('?')
+import struct, os
+entry='${entry}'
+prop='${OPP_BIN_PROP}'
+for p in [prop, 'opp-microvolt']:
+    f=entry+p
+    if os.path.exists(f):
+        try:
+            d=open(f,'rb').read()
+            print(struct.unpack('>I',d[:4])[0]//1000)
+        except: print('?')
+        break
+else: print('?')
 " 2>/dev/null)
                 DIAG+="  ${mhz} MHz → ${mv} mV\n"
             done
