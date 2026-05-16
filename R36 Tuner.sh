@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.2"
+VERSION="1.3"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -1280,6 +1280,11 @@ MainMenu() {
 pkill -9 -f gptokeyb || true
 sleep 1
 
+export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
+[ -x "$GPTOKEYB_BIN" ] && "$GPTOKEYB_BIN" -1 "R36_Tuner_v${VERSION}" \
+    ${GPTOKEYB_CFG:+-c "$GPTOKEYB_CFG"} > /dev/null 2>&1 &
+sleep 1
+
 # Warn if last boot profile caused a hang
 if [ -f "${CONFIG_FILE}.failed" ]; then
     dialog --backtitle "$BACKTITLE" --title "[ BOOT PROFILE FAILED ]" \
@@ -1296,10 +1301,6 @@ if [ -f "$DTB_RESTORED" ]; then
         --msgbox "Previous DTB undervolt caused instability.\nOriginal DTB was restored automatically.\n\nSafety service has been disabled.\nTry a smaller voltage offset next time." \
         10 58 > "$CURR_TTY"
 fi
-
-export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
-[ -x "$GPTOKEYB_BIN" ] && "$GPTOKEYB_BIN" -1 "R36_Tuner_v${VERSION}" \
-    ${GPTOKEYB_CFG:+-c "$GPTOKEYB_CFG"} > /dev/null 2>&1 &
 
 trap ExitMenu EXIT
 MainMenu

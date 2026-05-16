@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3 — 2026-05-16
+
+**Fix: pantalla negra al arrancar el tuner tras auto-restore de DTB:**
+- gptokeyb arrancaba DESPUÉS de los checks de startup → el dialog "DTB auto-restored" aparecía sin gamepad activo → msgbox sin forma de cerrarlo → script colgado en negro
+- Fix: gptokeyb se inicia antes de los checks de startup (+ sleep 1 para que tome input)
+- Mismo bug afectaba al aviso de "boot profile failed"
+
+---
+
 ## v1.2 — 2026-05-16
 
 **DTB Undervolt — Fine Tune mode:**
