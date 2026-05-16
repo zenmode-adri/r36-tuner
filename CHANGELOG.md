@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.8 — 2026-05-16
+
+**OC Experiment — 1608 MHz:**
+- Nueva opción en menú DTB Undervolt: "OC Experiment — 1608 MHz [EXPERIMENTAL]"
+- Añade nodo OPP `opp-1608000000` al DTB con voltaje stock 1512 MHz (1300 mV L2)
+- Al arrancar, el script detecta si el kernel aceptó la frecuencia comprobando `scaling_available_frequencies`
+- Muestra mensaje específico: "1608 MHz ACEPTADO" si aparece, "1608 MHz IGNORADO (clock driver cap)" si no
+- Safety service reutilizado: auto-restaura DTB si el boot falla
+- Fallback de voltajes por bin si la referencia de backup no está disponible
+
 ## v1.7 — 2026-05-16
 
 **Estado DTB en menú principal:**

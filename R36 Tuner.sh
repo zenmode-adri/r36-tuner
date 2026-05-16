@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.7"
+VERSION="1.8"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -18,6 +18,7 @@ DTB_BOOTING="/boot/.r36_dtb_patch_booting"
 DTB_RESTORED="/boot/.r36_dtb_restored"
 DTB_SAFETY_SCRIPT="/usr/local/bin/r36-dtb-safety.sh"
 DTB_SAFETY_SVC="/etc/systemd/system/r36-dtb-safety.service"
+OC_PENDING="/boot/.r36_oc_pending"
 
 export TERM=linux
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -334,6 +335,80 @@ TeardownDTBSafetyService() {
     systemctl daemon-reload
 }
 
+# ── DTB OC Experiment ─────────────────────────────────────────────────────────
+
+DTBOCApply() {
+    local DTB="$1" OPP_BASE="$2"
+    local OC_NODE="${OPP_BASE}/opp-1608000000"
+    local REF_DTB; [ -f "${DTB}.bak" ] && REF_DTB="${DTB}.bak" || REF_DTB="$DTB"
+
+    dialog --backtitle "$BACKTITLE" --title "[ OC EXPERIMENT — 1608 MHz ]" \
+        --yesno "Añadir OPP 1608 MHz al DTB.\n\nVoltaje: igual que stock 1512 MHz (1300 mV L2).\nTras reboot, el script detecta si el kernel\naceptó la frecuencia o la ignoró.\n\n[!] Safety service activo. Si no arranca:\nrecuperar backup manual desde PC." \
+        14 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    if [ ! -f "${DTB}.bak" ]; then
+        cp "$DTB" "${DTB}.bak" || {
+            dialog --msgbox "Backup fallido. Abortando." 5 40 > "$CURR_TTY"
+            return
+        }
+        REF_DTB="${DTB}.bak"
+    fi
+
+    dialog --infobox "Creando nodo OPP 1608 MHz..." 4 40 > "$CURR_TTY"
+
+    # Find reference node (1512 MHz, from backup = stock voltages)
+    local REF_NODE_PATH=""
+    for fmt in "opp-1512000000" "opp@1512000000"; do
+        fdtget -t u "$REF_DTB" "${OPP_BASE}/${fmt}" opp-microvolt >/dev/null 2>&1 \
+            && REF_NODE_PATH="${OPP_BASE}/${fmt}" && break
+        fdtget -t u "$REF_DTB" "${OPP_BASE}/${fmt}" opp-microvolt-L2 >/dev/null 2>&1 \
+            && REF_NODE_PATH="${OPP_BASE}/${fmt}" && break
+    done
+
+    fdtput -c "$DTB" "$OC_NODE" 2>/dev/null
+
+    # opp-hz as 64-bit: high=0, low=1608000000
+    fdtput -t u "$DTB" "$OC_NODE" opp-hz 0 1608000000 2>/dev/null
+
+    # Copy all voltage bin props from reference; fallback to safe defaults
+    local FAIL=0
+    for prop in opp-microvolt opp-microvolt-L0 opp-microvolt-L1 opp-microvolt-L2 opp-microvolt-L3; do
+        local vals=""
+        [ -n "$REF_NODE_PATH" ] && vals=$(fdtget -t u "$REF_DTB" "$REF_NODE_PATH" "$prop" 2>/dev/null)
+        if [ -z "$vals" ]; then
+            case "$prop" in
+                *-L3) vals="1250000 1250000 1250000" ;;
+                *-L2) vals="1300000 1300000 1300000" ;;
+                *)    vals="1350000 1350000 1350000" ;;
+            esac
+        fi
+        fdtput -t u "$DTB" "$OC_NODE" "$prop" $vals 2>/dev/null || FAIL=1
+    done
+
+    # Copy clock-latency-ns
+    if [ -n "$REF_NODE_PATH" ]; then
+        local clk_lat; clk_lat=$(fdtget -t u "$REF_DTB" "$REF_NODE_PATH" clock-latency-ns 2>/dev/null)
+        [ -n "$clk_lat" ] && fdtput -t u "$DTB" "$OC_NODE" clock-latency-ns $clk_lat 2>/dev/null
+    fi
+
+    # Verify node has voltage
+    local check; check=$(fdtget -t u "$DTB" "$OC_NODE" opp-microvolt-L2 2>/dev/null \
+                       || fdtget -t u "$DTB" "$OC_NODE" opp-microvolt 2>/dev/null)
+    if [ -z "$check" ] || [ "$FAIL" -eq 1 ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ OC ]" \
+            --msgbox "Error al crear nodo OPP. Restaurando backup..." 6 50 > "$CURR_TTY"
+        cp "${DTB}.bak" "$DTB"
+        return
+    fi
+
+    touch "$OC_PENDING"
+    SetupDTBSafetyService
+
+    dialog --backtitle "$BACKTITLE" --title "✓ OPP 1608 MHz añadido" \
+        --yesno "Nodo creado en DTB. Safety service activo.\n\nAl arrancar, el script comprobará si\n1608 MHz aparece en scaling_available_frequencies\ny mostrará el resultado.\n\n¿Reiniciar ahora?" 12 52 > "$CURR_TTY" && reboot
+}
+
 # ── CPU Tuning ────────────────────────────────────────────────────────────────
 
 CPUTuningMenu() {
@@ -644,9 +719,10 @@ DTBUndervoltMenu() {
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "Permanent OPP voltage patch — reboot required" \
-        12 60 5 \
+        13 62 6 \
         "patch"   "Patch voltages" \
         "diag"    "Diagnose — disk vs kernel OPP" \
+        "oc"      "OC Experiment — 1608 MHz [EXPERIMENTAL]" \
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
         2>&1 > "$CURR_TTY")
@@ -719,6 +795,12 @@ DTBUndervoltMenu() {
         local ROOT_NODES; ROOT_NODES=$(fdtget -l "$DTB" / 2>/dev/null | tr '\n' ' ')
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
             --msgbox "OPP table not found in DTB.\n\nRoot nodes scanned:\n$ROOT_NODES" 10 60 > "$CURR_TTY"
+        return
+    fi
+
+    # OC experiment — needs only OPP_BASE, no full scan
+    if [ "$ACTION" = "oc" ]; then
+        DTBOCApply "$DTB" "$OPP_BASE"
         return
     fi
 
@@ -1390,6 +1472,21 @@ if [ -f "$DTB_RESTORED" ]; then
     dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — AUTO-RESTORED ]" \
         --msgbox "Previous DTB undervolt caused instability.\nOriginal DTB was restored automatically.\n\nSafety service has been disabled.\nTry a smaller voltage offset next time." \
         10 58 > "$CURR_TTY"
+fi
+
+# Check OC experiment result
+if [ -f "$OC_PENDING" ]; then
+    rm -f "$OC_PENDING"
+    AVAIL=$(cat "$CPU_POLICY/scaling_available_frequencies" 2>/dev/null)
+    if echo "$AVAIL" | grep -qw "1608000"; then
+        dialog --backtitle "$BACKTITLE" --title "[ OC — 1608 MHz ACEPTADO ]" \
+            --msgbox "1608 MHz aparece en scaling_available_frequencies.\n\nEl clock driver del kernel acepta esta frecuencia.\nPuedes establecerlo como max en CPU Tuning.\n\n[!] Estabilidad no garantizada. Monitoriza temp.\n    Voltaje: stock 1512 MHz (1300 mV en bin L2)." \
+            12 64 > "$CURR_TTY"
+    else
+        dialog --backtitle "$BACKTITLE" --title "[ OC — 1608 MHz IGNORADO ]" \
+            --msgbox "1608 MHz NO aparece en scaling_available_frequencies.\n\nEl clock driver del kernel tiene un tope en 1512 MHz.\nNo es posible superar 1512 MHz sin recompilar\nel kernel de dArkOSRE.\n\nEl nodo OPP fue añadido al DTB correctamente\npero el kernel lo rechazó en tiempo de boot." \
+            12 64 > "$CURR_TTY"
+    fi
 fi
 
 trap ExitMenu EXIT
