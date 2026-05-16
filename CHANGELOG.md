@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6 — 2026-05-16
+
+**Benchmark — historial scrollable y borrable:**
+- View History usa `dialog --textbox` (navegable con gamepad, todas las entradas)
+- Nueva opción "Clear History" — borra log y baseline con confirmación
+
+---
+
 ## v1.5 — 2026-05-16
 
 **CPU Stress — duración 5 minutos:**

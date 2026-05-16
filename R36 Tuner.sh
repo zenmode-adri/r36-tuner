@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.5"
+VERSION="1.6"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -1111,9 +1111,27 @@ BenchmarkViewHistory() {
     [ -f "$BASELINE_FILE" ] && BASE=$(cat "$BASELINE_FILE" 2>/dev/null)
     local HEADER="CPU Score History"
     [ -n "$BASE" ] && HEADER+="  (baseline: ${BASE} MB/s = 100%)"
-    local CONTENT; CONTENT=$(tail -20 "$SCORES_FILE")
+    local TMPFILE; TMPFILE=$(mktemp)
+    cat "$SCORES_FILE" > "$TMPFILE"
     dialog --backtitle "$BACKTITLE" --title "[ $HEADER ]" \
-        --msgbox "$CONTENT" 24 78 > "$CURR_TTY"
+        --textbox "$TMPFILE" 24 78 > "$CURR_TTY"
+    rm -f "$TMPFILE"
+}
+
+BenchmarkClearHistory() {
+    if [ ! -f "$SCORES_FILE" ] && [ ! -f "$BASELINE_FILE" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ CLEAR HISTORY ]" \
+            --msgbox "No history to clear." 5 38 > "$CURR_TTY"
+        return
+    fi
+    local COUNT=0
+    [ -f "$SCORES_FILE" ] && COUNT=$(wc -l < "$SCORES_FILE" 2>/dev/null || echo 0)
+    dialog --backtitle "$BACKTITLE" --title "[ CLEAR HISTORY ]" \
+        --yesno "Delete score history and baseline?\n\n${COUNT} entries in log\nBaseline: $(cat "$BASELINE_FILE" 2>/dev/null || echo "none") MB/s\n\nThis cannot be undone." 10 48 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+    rm -f "$SCORES_FILE" "$BASELINE_FILE"
+    dialog --backtitle "$BACKTITLE" --title "✓ History Cleared" \
+        --msgbox "Score history and baseline deleted.\nNext benchmark run will set a new baseline." 7 52 > "$CURR_TTY"
 }
 
 StressTestCPU() {
@@ -1148,15 +1166,16 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    17 62 8 \
-                    1 "CPU       — sha256             (~10s)" \
+                    19 62 9 \
+                    1 "CPU       — sha256             (~60s)" \
                     2 "RAM       — 128MB r/w          (~8s)" \
                     3 "GPU       — glmark2            (~30s)" \
                     4 "All       — CPU + RAM + GPU" \
                     5 "CPU Stress — 5min full load, abort at 85°C" \
                     6 "Set Baseline  — mark next CPU run as 100%" \
-                    7 "View History  — last 20 CPU scores" \
-                    8 "Back" \
+                    7 "View History  — scrollable, all entries" \
+                    8 "Clear History — delete log and baseline" \
+                    9 "Back" \
                     2>&1 > "$CURR_TTY")
     [ $? -ne 0 ] && return
     case $CHOICE in
@@ -1167,6 +1186,7 @@ BenchmarkMenu() {
         5) StressTestCPU ;;
         6) BenchmarkSetBaseline ;;
         7) BenchmarkViewHistory ;;
+        8) BenchmarkClearHistory ;;
     esac
 }
 
