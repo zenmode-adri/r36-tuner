@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.2 — 2026-05-16
+
+**DTB Undervolt — Fine Tune mode:**
+- Nuevo modo de patch: "Fine tune" → selector por frecuencia individual
+- Cada OPP entry (1008/1200/1248/1296/1416/1512 MHz) tiene su propio offset independiente
+- Permite configurar -150 mV en frecuencias bajas y -125 mV en la alta si la alta es el límite
+- El menú muestra el estado actual de cada frecuencia durante la edición (offset + voltaje resultante)
+- Modo "Uniform" existente conservado como opción separada
+
+**Step 12.5 mV (mínimo del PMIC RK805):**
+- Ambos modos (Uniform y Fine Tune) ofrecen steps de 12.5 mV en vez de 25 mV
+- Internamente en µV para precisión exacta sin aritmética de punto flotante
+- Rango: -125 mV a +50 mV en pasos de 12.5 mV
+
+---
+
 ## v1.1 — 2026-05-16
 
 **CPU Stress Test:**

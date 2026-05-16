@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="1.1"
+VERSION="1.2"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -784,40 +784,144 @@ else: print('?')
         return
     fi
 
-    # Patch — build table and show offset selector
+    # Patch — build table, choose mode, apply
     local BIN_INFO="opp-microvolt"
-    [ -n "$BIN_LEVEL" ] && BIN_INFO="opp-microvolt-${BIN_LEVEL} (chip bin: ${BIN_LEVEL})"
-    local TABLE="DTB: $(basename "$DTB")  |  Using: ${BIN_INFO}\n\nCurrent OPP voltages:\n"
+    [ -n "$BIN_LEVEL" ] && BIN_INFO="opp-microvolt-${BIN_LEVEL} (bin: ${BIN_LEVEL})"
+    local TABLE="DTB: $(basename "$DTB")  |  ${BIN_INFO}\n\nCurrent OPP voltages:\n"
     for (( i=0; i<${#NODES[@]}; i++ )); do
         local mhz=$(( ${FREQS[$i]} / 1000000 ))
         local mv=$(( ${VOLTS[$i]} / 1000 ))
         TABLE+="  ${mhz} MHz  →  ${mv} mV\n"
     done
-    [ -f "${DTB}.bak" ] && TABLE+="\n[Backup exists: ${DTB}.bak]"
+    [ -f "${DTB}.bak" ] && TABLE+="\n[Backup: ${DTB}.bak exists]"
 
-    local OFFSET
-    OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — PATCH ]" \
-        --menu "$TABLE\nSelect voltage offset (applied to ALL entries):" \
-        26 60 8 \
-        "-100" "-100 mV  (aggressive)" \
-        "-75"  " -75 mV" \
-        "-50"  " -50 mV  (moderate)" \
-        "-25"  " -25 mV  (conservative)" \
-        "0"    "   0 mV  (read table only)" \
-        "+25"  " +25 mV" \
-        "+50"  " +50 mV  (restore margin)" \
+    local PATCH_MODE
+    PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — PATCH ]" \
+        --ok-label "Select" --cancel-label "Back" \
+        --menu "${TABLE}\nSelect patch mode:" \
+        26 60 2 \
+        "uniform" "Uniform — same offset for all frequencies" \
+        "fine"    "Fine tune — per-frequency, 12.5 mV steps" \
         2>&1 > "$CURR_TTY")
-    [ -z "$OFFSET" ] && return
-    [ "$OFFSET" = "0" ] && return
+    [ -z "$PATCH_MODE" ] && return
+
+    local N="${#NODES[@]}"
+    local OFFSETS_UV=()
+    for (( i=0; i<N; i++ )); do OFFSETS_UV[$i]=0; done
+
+    if [ "$PATCH_MODE" = "uniform" ]; then
+        local OFFSET_UV
+        OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — UNIFORM OFFSET ]" \
+            --menu "Applied to all ${N} OPP entries  |  Step: 12.5 mV (PMIC minimum):" \
+            24 62 14 \
+            "-125000" "-125 mV    [extreme]" \
+            "-112500" "-112.5 mV" \
+            "-100000" "-100 mV    [aggressive]" \
+             "-87500" " -87.5 mV" \
+             "-75000" " -75 mV" \
+             "-62500" " -62.5 mV" \
+             "-50000" " -50 mV    [moderate]" \
+             "-37500" " -37.5 mV" \
+             "-25000" " -25 mV    [conservative]" \
+             "-12500" " -12.5 mV  [minimal]" \
+                  "0" "   0 mV   [read table only]" \
+              "25000" " +25 mV" \
+              "50000" " +50 mV   [restore margin]" \
+            2>&1 > "$CURR_TTY")
+        [ -z "$OFFSET_UV" ] && return
+        [ "$OFFSET_UV" = "0" ] && return
+        for (( i=0; i<N; i++ )); do OFFSETS_UV[$i]="$OFFSET_UV"; done
+
+    else
+        # Fine tune — interactive per-freq loop
+        while true; do
+            local FTCHOICES=()
+            for (( i=0; i<N; i++ )); do
+                local mhz=$(( ${FREQS[$i]} / 1000000 ))
+                local cur_mv=$(( ${VOLTS[$i]} / 1000 ))
+                local off_uv="${OFFSETS_UV[$i]}"
+                local new_uv=$(( ${VOLTS[$i]} + off_uv ))
+                [ $new_uv -lt 700000 ] && new_uv=700000
+                local new_mv=$(( new_uv / 1000 ))
+                local new_frac=$(( new_uv % 1000 ))
+                local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
+                local abs_uv; [ "$off_uv" -lt 0 ] && abs_uv=$(( -off_uv )) || abs_uv="$off_uv"
+                local sign; [ "$off_uv" -lt 0 ] && sign="-" || sign="+"
+                local whole=$(( abs_uv / 1000 ))
+                local frac=$(( abs_uv % 1000 ))
+                local off_label
+                if [ "$off_uv" -eq 0 ]; then
+                    off_label="unchanged"
+                elif [ "$frac" -eq 500 ]; then
+                    off_label="${sign}${whole}.5mV → ${new_str}mV"
+                else
+                    off_label="${sign}${whole}mV → ${new_str}mV"
+                fi
+                FTCHOICES+=("$i" "${mhz} MHz: ${cur_mv}mV  [${off_label}]")
+            done
+            FTCHOICES+=("done" "── Apply these offsets ──")
+
+            local FT_SEL
+            FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — SELECT FREQUENCY ]" \
+                --ok-label "Tune" --cancel-label "Cancel" \
+                --menu "Select frequency to adjust:" \
+                20 65 $(( N + 1 )) \
+                "${FTCHOICES[@]}" \
+                2>&1 > "$CURR_TTY")
+            [ $? -ne 0 ] && return
+            [ "$FT_SEL" = "done" ] && break
+
+            local IDX="$FT_SEL"
+            local freq_mhz=$(( ${FREQS[$IDX]} / 1000000 ))
+            local stock_mv=$(( ${VOLTS[$IDX]} / 1000 ))
+            local cur_off="${OFFSETS_UV[$IDX]}"
+
+            local FREQ_OFFSET
+            FREQ_OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — ${freq_mhz} MHz ]" \
+                --default-item "$cur_off" \
+                --menu "Stock: ${stock_mv} mV  |  Select offset:" \
+                24 60 14 \
+                "-125000" "-125 mV" \
+                "-112500" "-112.5 mV" \
+                "-100000" "-100 mV" \
+                 "-87500" " -87.5 mV" \
+                 "-75000" " -75 mV" \
+                 "-62500" " -62.5 mV" \
+                 "-50000" " -50 mV" \
+                 "-37500" " -37.5 mV" \
+                 "-25000" " -25 mV" \
+                 "-12500" " -12.5 mV" \
+                      "0" "   0 mV  (no change)" \
+                  "12500" " +12.5 mV" \
+                  "25000" " +25 mV" \
+                  "50000" " +50 mV" \
+                2>&1 > "$CURR_TTY")
+            [ $? -ne 0 ] && continue
+            OFFSETS_UV[$IDX]="$FREQ_OFFSET"
+        done
+
+        local ALL_ZERO=1
+        for (( i=0; i<N; i++ )); do [ "${OFFSETS_UV[$i]}" -ne 0 ] && ALL_ZERO=0 && break; done
+        [ $ALL_ZERO -eq 1 ] && return
+    fi
 
     # Preview + confirm
-    local PREVIEW="Offset: ${OFFSET} mV\n\n"
-    for (( i=0; i<${#NODES[@]}; i++ )); do
+    local PREVIEW=""
+    [ -n "$BIN_LEVEL" ] && PREVIEW="Bin: ${BIN_LEVEL}  |  Prop: ${OPP_BIN_PROP}\n\n"
+    for (( i=0; i<N; i++ )); do
         local mhz=$(( ${FREQS[$i]} / 1000000 ))
         local mv=$(( ${VOLTS[$i]} / 1000 ))
-        local new_mv=$(( mv + OFFSET ))
-        [ $new_mv -lt 700 ] && new_mv=700
-        PREVIEW+="  ${mhz} MHz: ${mv} → ${new_mv} mV\n"
+        local off_uv="${OFFSETS_UV[$i]}"
+        local new_uv=$(( ${VOLTS[$i]} + off_uv ))
+        [ $new_uv -lt 700000 ] && new_uv=700000
+        local new_mv=$(( new_uv / 1000 ))
+        local new_frac=$(( new_uv % 1000 ))
+        local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
+        if [ "$off_uv" -eq 0 ]; then
+            PREVIEW+="  ${mhz} MHz: ${mv} mV  (unchanged)\n"
+        else
+            PREVIEW+="  ${mhz} MHz: ${mv} → ${new_str} mV\n"
+        fi
     done
     local BAK_NOTE; [ -f "${DTB}.bak" ] && BAK_NOTE="Backup: ${DTB}.bak (existing)" || BAK_NOTE="Backup: ${DTB}.bak (will create)"
     PREVIEW+="\n${BAK_NOTE}  |  Reboot required."
@@ -833,14 +937,15 @@ else: print('?')
     dialog --infobox "Patching DTB..." 4 35 > "$CURR_TTY"
 
     local FAIL=0
-    for (( i=0; i<${#NODES[@]}; i++ )); do
+    for (( i=0; i<N; i++ )); do
+        local off_uv="${OFFSETS_UV[$i]}"
+        [ "$off_uv" -eq 0 ] && continue
         local node="${NODES[$i]}"
         local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$node" "$OPP_BIN_PROP" 2>/dev/null)
         [ -z "$volt_raw" ] && volt_raw=$(fdtget -t u "$DTB" "$node" opp-microvolt 2>/dev/null)
         local new_vals=""
         for uv in $volt_raw; do
-            local mv=$(( uv / 1000 ))
-            local new_uv=$(( (mv + OFFSET) * 1000 ))
+            local new_uv=$(( uv + off_uv ))
             [ $new_uv -lt 700000 ] && new_uv=700000
             new_vals+="$new_uv "
         done
