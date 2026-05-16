@@ -552,22 +552,23 @@ DTBUndervoltMenu() {
     fi
 
     # 3. Find CPU OPP table node — try known names, then scan all root children
+    # RK3326 mainline DTB: node name is "opp-table-0"; BSP kernels vary
     local OPP_BASE=""
-    for candidate in /cpu0-opp-table /cpu-opp-table /opp-table0 /opp-table; do
+    for candidate in /opp-table-0 /cpu0-opp-table /cpu-opp-table /opp-table0 /opp-table; do
         fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && OPP_BASE="$candidate" && break
     done
-    # Fallback: scan root children whose name contains "cpu" or "opp" for opp@ entries
+    # Fallback: scan root children with "opp" or "cpu" in name that have opp-* or opp@* children
     if [ -z "$OPP_BASE" ]; then
         while IFS= read -r node; do
             [ -z "$node" ] && continue
-            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -q "^opp@" && OPP_BASE="/$node" && break
+            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -qE "^opp[@-]" && OPP_BASE="/$node" && break
         done < <(fdtget -l "$DTB" / 2>/dev/null | grep -iE "opp|cpu")
     fi
-    # Last resort: any root child with opp@ children
+    # Last resort: any root child with opp-* or opp@* children
     if [ -z "$OPP_BASE" ]; then
         while IFS= read -r node; do
             [ -z "$node" ] && continue
-            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -q "^opp@" && OPP_BASE="/$node" && break
+            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -qE "^opp[@-]" && OPP_BASE="/$node" && break
         done < <(fdtget -l "$DTB" / 2>/dev/null)
     fi
     if [ -z "$OPP_BASE" ]; then
@@ -577,18 +578,20 @@ DTBUndervoltMenu() {
         return
     fi
 
-    # 4. Read OPP entries (node name = opp@<hz>)
+    # 4. Read OPP entries — supports both opp@<hz> (BSP) and opp-<hz> (mainline) naming
     local NODES=() FREQS=() VOLTS=()
     while IFS= read -r node; do
-        [[ "$node" != opp@* ]] && continue
-        local freq_hz="${node#opp@}"
-        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
+        [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
+        local freq_hz
+        [[ "$node" == opp@* ]] && freq_hz="${node#opp@}" || freq_hz="${node#opp-}"
+        local volt_raw; volt_raw=$(fdtget "$DTB" "$OPP_BASE/$node" opp-microvolt 2>/dev/null)
         [ -z "$volt_raw" ] && continue
-        local volt_uv; volt_uv=$(echo "$volt_raw" | awk '{print $NF}')
+        local volt_uv; volt_uv=$(echo "$volt_raw" | awk '{print $1}')
+        [[ "$volt_uv" =~ ^[0-9]+$ ]] || volt_uv=$(( volt_uv ))
         NODES+=("$OPP_BASE/$node")
         FREQS+=("$freq_hz")
         VOLTS+=("$volt_uv")
-    done < <(fdtget -l "$DTB" "$OPP_BASE" 2>/dev/null | sort -t@ -k2 -n)
+    done < <(fdtget -l "$DTB" "$OPP_BASE" 2>/dev/null | sort)
 
     if [ ${#NODES[@]} -eq 0 ]; then
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
@@ -660,7 +663,7 @@ DTBUndervoltMenu() {
     local FAIL=0
     for (( i=0; i<${#NODES[@]}; i++ )); do
         local node="${NODES[$i]}"
-        local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$node" opp-microvolt 2>/dev/null)
+        local volt_raw; volt_raw=$(fdtget "$DTB" "$node" opp-microvolt 2>/dev/null)
         local new_vals=""
         for uv in $volt_raw; do
             local mv=$(( uv / 1000 ))
