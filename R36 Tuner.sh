@@ -905,9 +905,8 @@ MonitorMenu() {
 
 BenchmarkCPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "sha256 + aes-256 via openssl...\nPlease wait ~15s" 5 45 > "$CURR_TTY"
+        --infobox "sha256 via openssl...\nPlease wait ~10s" 5 40 > "$CURR_TTY"
 
-    # SHA256
     local SSL_KBS=0 SSL_DISP="N/A"
     if command -v openssl >/dev/null 2>&1; then
         local raw; raw=$(openssl speed sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
@@ -917,20 +916,8 @@ BenchmarkCPU() {
         fi
     fi
 
-    # AES-256-CBC
-    local AES_KBS=0 AES_DISP="N/A"
-    if command -v openssl >/dev/null 2>&1; then
-        local raw_aes; raw_aes=$(openssl speed aes-256-cbc 2>&1 | grep -i "aes-256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
-        if [ -n "$raw_aes" ]; then
-            AES_KBS=$(echo "$raw_aes" | awk '{printf "%d", $1}')
-            AES_DISP="$(( AES_KBS / 1024 )) MB/s"
-        fi
-    fi
-
-    # Score = sha256 MB/s (primary metric)
     local SCORE=$([ $SSL_KBS -gt 0 ] && echo $(( SSL_KBS / 1024 )) || echo 0)
 
-    # Relative score vs baseline
     local REL_DISP=""
     if [ -f "$BASELINE_FILE" ]; then
         local BASE; BASE=$(cat "$BASELINE_FILE" 2>/dev/null)
@@ -951,13 +938,13 @@ BenchmarkCPU() {
     local GOV; GOV=$(GetGOV)
     local TEMP; TEMP=$(GetTempC)
 
-    printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s | aes256: %s\n" \
-        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" "$AES_DISP" \
+    printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256  : ${SSL_DISP}\naes-256 : ${AES_DISP}\n${REL_DISP}" \
-        11 62 > "$CURR_TTY"
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256 : ${SSL_DISP}\n${REL_DISP}" \
+        10 62 > "$CURR_TTY"
 }
 
 BenchmarkRAM() {
@@ -1057,7 +1044,7 @@ BenchmarkMenu() {
                     --cancel-label "Back" \
                     --menu "Select test to run" \
                     17 62 8 \
-                    1 "CPU       — sha256 + aes-256  (~15s)" \
+                    1 "CPU       — sha256             (~10s)" \
                     2 "RAM       — 128MB r/w          (~8s)" \
                     3 "GPU       — glmark2            (~30s)" \
                     4 "All       — CPU + RAM + GPU" \
