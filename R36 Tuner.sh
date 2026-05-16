@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+/bin/bash
 # R36 Tuner v1.1 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
