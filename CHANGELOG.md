@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.1 — 2026-05-16
+
+**Fix: shebang `#!/bin/bash` perdido:**
+- El commit de fix BOM/CRLF (7379122) reconstruyó el archivo sin el `#!` inicial
+- Resultado: kernel no podía determinar el intérprete → pantalla negra al lanzar el script
+- Fix: restaurado `#!/bin/bash` en línea 1
+
+**Fix: GPU benchmark — reemplazar glmark2-es2-fbdev por glmark2-es2-drm:**
+- dArkOSRE usa libmali variante GBM (`libmali-bifrost-g31-rxp0-gbm.so`) + DRM/KMS
+- No existe backend fbdev EGL → `glmark2-es2-fbdev` fallaba con `eglGetDisplay() error 0x3000`
+- Fix: embebido `glmark2-es2-drm` (Debian Bookworm arm64, v2023.01) — usa DRM/GBM
+- DRM confirmado: `/dev/dri/card0`, `renderD128`; pantalla fb0: 640×480
+- GPU benchmark ahora detecta resolución real del framebuffer via `/sys/class/graphics/fb0/virtual_size`
+
+**Mejora: GPU Info en menú Benchmark:**
+- Nueva opción 10 "GPU Info" — muestra DRM, fbdev, libs EGL/Mali, `/dev/mali0`
+- Útil para diagnóstico sin SSH ni teclado
+
 ## v2.0 — 2026-05-16
 
 **Fix: script no arrancaba en el dispositivo:**
