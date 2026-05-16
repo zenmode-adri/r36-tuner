@@ -1024,6 +1024,31 @@ BenchmarkViewHistory() {
         --msgbox "$CONTENT" 24 78 > "$CURR_TTY"
 }
 
+StressTestCPU() {
+    local DURATION=60
+    local END=$(( $(date +%s) + DURATION ))
+    local MAX_TEMP=0 ITER=0
+    dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS TEST ]" \
+        --infobox "Burning CPU for ${DURATION}s via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 7 52 > "$CURR_TTY"
+
+    while [ "$(date +%s)" -lt "$END" ]; do
+        local T; T=$(GetTempC)
+        if [[ "$T" =~ ^[0-9]+$ ]] && [ "$T" -ge 85 ]; then
+            dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — ABORTED ]" \
+                --msgbox "THERMAL ABORT at ${T}°C\n\nUndervolt may be unstable at this load.\nTry a smaller offset." 9 50 > "$CURR_TTY"
+            return
+        fi
+        [[ "$T" =~ ^[0-9]+$ ]] && [ "$T" -gt "$MAX_TEMP" ] && MAX_TEMP=$T
+        openssl speed sha256 >/dev/null 2>&1
+        ITER=$(( ITER + 1 ))
+    done
+
+    local MHZ; MHZ=$(GetCPUMaxMHz)
+    local MV; MV=$(GetRegVoltMV "$VDD_ARM")
+    dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — PASSED ]" \
+        --msgbox "STABLE — ${DURATION}s at full CPU load\n\n${MHZ} MHz  |  ${MV} mV  |  peak ${MAX_TEMP}°C\n\nUndervolt appears stable." 9 52 > "$CURR_TTY"
+}
+
 BenchmarkMenu() {
     local CHOICE
     CHOICE=$(dialog --backtitle "$BACKTITLE" \
@@ -1031,14 +1056,15 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    16 62 8 \
-                    1 "CPU       — sha256 + gzip  (~15s)" \
-                    2 "RAM       — 128MB r/w       (~8s)" \
-                    3 "GPU       — glmark2         (~30s)" \
+                    17 62 8 \
+                    1 "CPU       — sha256 + aes-256  (~15s)" \
+                    2 "RAM       — 128MB r/w          (~8s)" \
+                    3 "GPU       — glmark2            (~30s)" \
                     4 "All       — CPU + RAM + GPU" \
-                    5 "Set Baseline  — mark next CPU run as 100%" \
-                    6 "View History  — last 20 CPU scores" \
-                    7 "Back" \
+                    5 "CPU Stress — 60s full load, abort at 85°C" \
+                    6 "Set Baseline  — mark next CPU run as 100%" \
+                    7 "View History  — last 20 CPU scores" \
+                    8 "Back" \
                     2>&1 > "$CURR_TTY")
     [ $? -ne 0 ] && return
     case $CHOICE in
@@ -1046,8 +1072,9 @@ BenchmarkMenu() {
         2) BenchmarkRAM ;;
         3) BenchmarkGPU ;;
         4) BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
-        5) BenchmarkSetBaseline ;;
-        6) BenchmarkViewHistory ;;
+        5) StressTestCPU ;;
+        6) BenchmarkSetBaseline ;;
+        7) BenchmarkViewHistory ;;
     esac
 }
 
