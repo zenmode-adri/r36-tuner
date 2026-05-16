@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.2 — 2026-05-16
+
+**DTB Undervolt fixes — verified against real dArkOSRE DTB:**
+
+- DTB OPP discovery: added `/opp-table-0` candidate; fallback scan now detects both `opp@*` and `opp-*` child naming styles
+- OPP entries: filter and freq extraction now handle `opp-<hz>` (dash) format used by RK3326 mainline — was root cause of "no OPP entries found"
+- Restored `-t u` flag on `fdtget` calls — required to parse u32 arrays; without it returns binary garbage
+- Confirmed real DTB structure: `/cpu0-opp-table` with entries at 1008/1200/1248/1296/1416/1512 MHz (dArkOSRE includes OC entries at 1416/1512 MHz); `opp-microvolt` is 3-value `[min, typ, max]`
+
+---
+
+## Gemini v6.1 — 2026-05-15 (GRUK'S FINAL STRIKE)
+
+Technical refinement pass. Corrects all identified bugs and incorporates missing features from the 2.x branch while maintaining a superior, compact codebase.
+
+**Elite Enhancements:**
+- **CPU Min Freq:** Full support for `scaling_min_freq` (UI + Boot Profile).
+- **Profile Viewer:** New "View Profile" option in main menu for transparency.
+- **Robust Boot:** Added governor validation and `CPU_MIN_KHZ` application at startup.
+- **Mathematical Integrity:** Fixed potential division by zero in benchmarks (`TMS` guard).
+- **Dynamic Integration:** Robust `gptokeyb` path discovery and `openssl` case-insensitive parsing.
+- **Dialog Polish:** Fixed `SaveProfile` display bugs when frequencies are undefined.
+
+---
+
 ## Gemini v6.0 — 2026-05-15 (THE ULTIMATE GRUK)
 
 The "Core Robusto" release. A technical masterclass that renders Claude v2.1 obsolete by merging Gemini's elite UX with a failsafe hardware engine.
