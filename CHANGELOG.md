@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.5 — 2026-05-19
+
+**Fix: GetDTBStatus() detecta GPU undervolt además de CPU:**
+- Antes: solo comparaba voltaje CPU OPP 1512 MHz → si solo GPU parchada mostraba "stock"
+- Ahora: compara también `/gpu-opp-table/opp-520000000` con el backup
+- Formato combinado: "CPU -125mV (1175mV) | GPU -25mV (1075mV)"
+- Si solo GPU: "GPU -25mV (1075mV)" | si solo CPU: "CPU -125mV (1175mV)"
+- Muestra estado correcto en main menu ítem 7 y en Validate GPU UV
+
 ## v2.4 — 2026-05-19
 
 **Feat: ValidateGPUUndervolt — test terrain off-screen ~30s:**

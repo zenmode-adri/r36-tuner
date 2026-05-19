@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v2.4 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.5 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.4"
+VERSION="2.5"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -92,15 +92,45 @@ GetDTBStatus() {
     local DTB="/boot/rk3326-r36s-linux.dtb"
     [ ! -f "${DTB}.bak" ] && echo "stock" && return
     command -v fdtget >/dev/null 2>&1 || { echo "patched"; return; }
-    local cur_uv bak_uv
-    cur_uv=$(fdtget -t u "$DTB" /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
-    bak_uv=$(fdtget -t u "${DTB}.bak" /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
-    [ -z "$cur_uv" ] || [ -z "$bak_uv" ] && { echo "patched"; return; }
-    local delta_mv=$(( (cur_uv - bak_uv) / 1000 ))
-    local cur_mv=$(( cur_uv / 1000 ))
-    [ "$delta_mv" -lt 0 ] && echo "${delta_mv}mV (${cur_mv}mV)" && return
-    [ "$delta_mv" -gt 0 ] && echo "+${delta_mv}mV (${cur_mv}mV)" && return
-    echo "patched"
+
+    # CPU delta
+    local cpu_delta=""
+    local cpu_cur cpu_bak
+    cpu_cur=$(fdtget -t u "$DTB"       /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
+    cpu_bak=$(fdtget -t u "${DTB}.bak" /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
+    if [ -n "$cpu_cur" ] && [ -n "$cpu_bak" ]; then
+        local cd=$(( (cpu_cur - cpu_bak) / 1000 ))
+        local cmv=$(( cpu_cur / 1000 ))
+        [ "$cd" -ne 0 ] && cpu_delta="CPU ${cd}mV (${cmv}mV)"
+    fi
+
+    # GPU delta — try opp-520000000 (dash and @ variants)
+    local gpu_delta=""
+    local gpu_node=""
+    for n in "/gpu-opp-table/opp-520000000" "/gpu-opp-table/opp@520000000"; do
+        fdtget -t u "$DTB" "$n" "$DTB_STATUS_PROP" >/dev/null 2>&1 && gpu_node="$n" && break
+    done
+    if [ -n "$gpu_node" ]; then
+        local gpu_cur gpu_bak
+        gpu_cur=$(fdtget -t u "$DTB"       "$gpu_node" "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
+        gpu_bak=$(fdtget -t u "${DTB}.bak" "$gpu_node" "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
+        if [ -n "$gpu_cur" ] && [ -n "$gpu_bak" ]; then
+            local gd=$(( (gpu_cur - gpu_bak) / 1000 ))
+            local gmv=$(( gpu_cur / 1000 ))
+            [ "$gd" -ne 0 ] && gpu_delta="GPU ${gd}mV (${gmv}mV)"
+        fi
+    fi
+
+    # Combine
+    if [ -n "$cpu_delta" ] && [ -n "$gpu_delta" ]; then
+        echo "${cpu_delta} | ${gpu_delta}"
+    elif [ -n "$cpu_delta" ]; then
+        echo "$cpu_delta"
+    elif [ -n "$gpu_delta" ]; then
+        echo "$gpu_delta"
+    else
+        echo "patched"
+    fi
 }
 
 GetCPUAvail()   { cat "$CPU_POLICY/scaling_available_frequencies" 2>/dev/null | tr ' ' '\n' | sort -rn | grep -v '^$'; }
