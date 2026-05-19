@@ -1361,32 +1361,12 @@ GPUInfo() {
 }
 
 BenchmarkGPU() {
+    local GL_LOG=/tmp/gpu_bench_out.txt
+
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --yesno "GPU benchmark requiere cerrar EmulationStation brevemente (~20s).\n\nLa pantalla se quedará en negro — es normal.\nEl resultado aparecerá solo y ES se reiniciará.\n\n¿Continuar?" 11 58 > "$CURR_TTY"
-    [ $? -ne 0 ] && return
+        --infobox "GPU benchmark (EGL/GBM pbuffer)...\nEspera ~15s" 5 46 > "$CURR_TTY"
 
-    # Write runner to /tmp — se lanza en cgroup propio via systemd-run
-    # para sobrevivir cuando ES (y este script) mueran
-    cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
-#!/bin/bash
-TTY=/dev/tty1
-GL_LOG=/tmp/gpu_bench_out.txt
-SCORES=/etc/r36_tuner_scores.log
-
-sleep 2  # espera a que el tuner cierre su sesión
-
-systemctl stop emulationstation 2>/dev/null
-i=0
-while pgrep -x emulationstation > /dev/null 2>&1 && [ $i -lt 20 ]; do
-    sleep 0.5; i=$((i+1))
-done
-chvt 1 2>/dev/null
-sleep 1  # espera a que fbcon recupere el display
-
-dialog --title "[ BENCHMARK — GPU ]" \
-    --infobox "GPU benchmark (EGL/GBM)...\nEspera ~15s" 5 42 > $TTY
-
-python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
+    python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
 import ctypes, os, time, sys
 from ctypes import c_int as c_i, c_uint as c_u, c_void_p as c_vp, c_float as c_f
 try:
@@ -1408,10 +1388,14 @@ egl_lib.eglSwapBuffers.restype     = c_u
 EGL_PLATFORM_GBM=0x31D7; EGL_OPENGL_ES2=0x30A0; EGL_NONE=0x3038
 EGL_SURFACE_TYPE=0x3033; EGL_PBUFFER_BIT=0x1; EGL_RENDERABLE=0x3040
 EGL_ES2_BIT=0x4; EGL_CTX_VER=0x3098; EGL_WIDTH=0x3057; EGL_HEIGHT=0x3056
-try:
-    fd = os.open("/dev/dri/card0", os.O_RDWR)
-except OSError as e:
-    print(f"ERROR: open card0: {e}"); sys.exit(1)
+fd = None
+for dev in ("/dev/dri/renderD128", "/dev/dri/card0"):
+    try:
+        fd = os.open(dev, os.O_RDWR); break
+    except OSError:
+        continue
+if fd is None:
+    print("ERROR: no DRI device available"); sys.exit(1)
 gbm_dev = gbm_lib.gbm_create_device(fd)
 if not gbm_dev: print("ERROR: gbm_create_device"); sys.exit(1)
 fn = egl_lib.eglGetProcAddress(b"eglGetPlatformDisplayEXT")
@@ -1441,46 +1425,21 @@ for _ in range(N):
 print(f"GPU Score: {int(N/(time.monotonic()-t0))}")
 PYEOF
 
-SCORE=$(grep "^GPU Score:" "$GL_LOG" | awk '{print $3}')
-if [ -n "$SCORE" ]; then
-    GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
-    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
-    echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
-    MSG="GPU Score: ${SCORE} pts\n\nGuardado en historial."
-else
-    TAIL=$(grep "ERROR" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
-    MSG="Sin score:\n${TAIL}"
-fi
-
-dialog --title "[ GPU RESULTS ]" \
-    --msgbox "${MSG}\n\nReiniciando EmulationStation en 8s..." 10 55 > $TTY
-
-sleep 8
-systemctl start emulationstation 2>/dev/null
-RUNNER_EOF
-
-    chmod +x /tmp/gpu_bench_runner.sh
-
-    # Instalar como servicio systemd (cgroup propio bajo /system.slice/)
-    echo ark | sudo -S bash -c '
-cat > /etc/systemd/system/r36-gpu-bench.service << SVCEOF
-[Unit]
-Description=R36 GPU Benchmark
-[Service]
-Type=simple
-User=root
-StandardInput=null
-StandardOutput=null
-StandardError=null
-ExecStart=/tmp/gpu_bench_runner.sh
-ExecStopPost=rm -f /etc/systemd/system/r36-gpu-bench.service
-SVCEOF
-systemctl daemon-reload
-systemctl start r36-gpu-bench' 2>/dev/null
-
-    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "GPU benchmark lanzado.\nResultado aparecerá en pantalla (~20s).\nVolviendo al menú..." 6 50 > "$CURR_TTY"
-    sleep 3
+    local SCORE
+    SCORE=$(grep "^GPU Score:" "$GL_LOG" 2>/dev/null | awk '{print $3}')
+    if [ -n "$SCORE" ]; then
+        local GPU_MHZ TEMP
+        GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
+        TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
+        echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES_FILE"
+        dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
+            --msgbox "GPU Score: ${SCORE} pts\n\nGuardado en historial." 8 45 > "$CURR_TTY"
+    else
+        local ERR
+        ERR=$(grep "ERROR" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
+        dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
+            --msgbox "Sin score.\n\n${ERR}" 9 55 > "$CURR_TTY"
+    fi
 }
 
 BenchmarkSetBaseline() {
