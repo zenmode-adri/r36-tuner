@@ -1371,10 +1371,9 @@ BenchmarkGPU() {
         --infobox "Parando EmulationStation..." 4 38 > "$CURR_TTY"
 
     systemctl stop emulationstation 2>/dev/null
-    local i=0
-    while pgrep -x emulationstation > /dev/null 2>&1 && [ $i -lt 20 ]; do
-        sleep 0.5; i=$((i+1))
-    done
+    sleep 2
+    pkill -9 -x emulationstation 2>/dev/null
+    sleep 1
     chvt 1 2>/dev/null
     sleep 1
     printf '\033c' > /dev/tty1
