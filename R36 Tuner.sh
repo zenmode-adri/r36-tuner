@@ -1362,28 +1362,34 @@ GPUInfo() {
 
 BenchmarkGPU() {
     local GL_LOG=/tmp/gpu_bench_out.txt
+    local PENDING=/tmp/gpu_bench_pending
+
+    # Mostrar resultado de ejecución anterior si existe
+    if [ -f "$PENDING" ]; then
+        local PREV; PREV=$(cat "$PENDING")
+        rm -f "$PENDING"
+        dialog --backtitle "$BACKTITLE" --title "[ GPU — RESULTADO ANTERIOR ]" \
+            --msgbox "${PREV}" 8 52 > "$CURR_TTY"
+    fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --yesno "GPU benchmark necesita parar EmulationStation ~20s.\nLa pantalla se pondrá en negro — es normal.\nEl resultado aparece en este menú al terminar.\n\n¿Continuar?" 10 58 > "$CURR_TTY"
+        --yesno "GPU benchmark para EmulationStation ~25s.\nPantalla en negro — normal.\nResultado aquí al volver al tuner.\n\n¿Continuar?" 9 55 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "Parando EmulationStation..." 4 38 > "$CURR_TTY"
+    cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
+#!/bin/bash
+GL_LOG=/tmp/gpu_bench_out.txt
+SCORES=/etc/r36_tuner_scores.log
+PENDING=/tmp/gpu_bench_pending
 
-    systemctl stop emulationstation 2>/dev/null
-    sleep 2
-    pkill -9 -x emulationstation 2>/dev/null
-    sleep 1
-    chvt 1 2>/dev/null
-    sleep 1
-    printf '\033c' > /dev/tty1
-    sleep 1
+sleep 2
+systemctl stop emulationstation 2>/dev/null
+sleep 2
+pkill -9 -x emulationstation 2>/dev/null
+sleep 1
 
-    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "GPU benchmark (EGL/GBM)...\nEspera ~15s" 5 42 > "$CURR_TTY"
-
-    rm -f "$GL_LOG"
-    timeout 30 python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
+rm -f "$GL_LOG"
+python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
 import ctypes, os, time, sys
 from ctypes import c_int as c_i, c_uint as c_u, c_void_p as c_vp, c_float as c_f
 try:
@@ -1438,23 +1444,40 @@ for _ in range(N):
 print(f"GPU Score: {int(N/(time.monotonic()-t0))}")
 PYEOF
 
-    local SCORE
-    SCORE=$(grep "^GPU Score:" "$GL_LOG" 2>/dev/null | awk '{print $3}')
-    if [ -n "$SCORE" ]; then
-        local GPU_MHZ TEMP
-        GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
-        TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
-        echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES_FILE"
-        dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
-            --msgbox "GPU Score: ${SCORE} pts\n\nGuardado en historial.\n\nReiniciando EmulationStation..." 10 50 > "$CURR_TTY"
-    else
-        local ERR
-        ERR=$(grep "ERROR" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
-        dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
-            --msgbox "Sin score.\n\n${ERR}\n\nReiniciando EmulationStation..." 10 55 > "$CURR_TTY"
-    fi
+SCORE=$(grep "^GPU Score:" "$GL_LOG" | awk '{print $3}')
+if [ -n "$SCORE" ]; then
+    GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
+    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
+    echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
+    echo "GPU Score: ${SCORE} pts\n\nGPU: ${GPU_MHZ}MHz  Temp: ${TEMP}C\nGuardado en historial." > "$PENDING"
+else
+    ERR=$(grep "ERROR" "$GL_LOG" 2>/dev/null | tail -2 | tr '\n' ' ')
+    echo "GPU bench fallido.\n\n${ERR}" > "$PENDING"
+fi
 
-    systemctl start emulationstation 2>/dev/null
+systemctl start emulationstation 2>/dev/null
+RUNNER_EOF
+
+    chmod +x /tmp/gpu_bench_runner.sh
+    echo ark | sudo -S bash -c '
+cat > /etc/systemd/system/r36-gpu-bench.service << SVCEOF
+[Unit]
+Description=R36 GPU Benchmark
+[Service]
+Type=simple
+User=root
+StandardInput=null
+StandardOutput=null
+StandardError=null
+ExecStart=/tmp/gpu_bench_runner.sh
+ExecStopPost=rm -f /etc/systemd/system/r36-gpu-bench.service
+SVCEOF
+systemctl daemon-reload
+systemctl start r36-gpu-bench' 2>/dev/null
+
+    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
+        --infobox "GPU bench en curso...\nPantalla negra ~25s, luego ES vuelve.\nEntra aquí de nuevo para ver resultado." 7 52 > "$CURR_TTY"
+    sleep 4
 }
 
 BenchmarkSetBaseline() {
