@@ -1386,8 +1386,9 @@ pkill -9 -x emulationstation 2>/dev/null
 sleep 1
 
 rm -f "$GL_LOG"
-glmark2-es2-drm --off-screen --size 320x240 --duration 15 \
-    -b build -b texture -b shading -b terrain > "$GL_LOG" 2>&1
+glmark2-es2-drm --off-screen --size 320x240 \
+    -b build:duration=15 -b texture:duration=15 \
+    -b shading:duration=15 -b terrain:duration=15 > "$GL_LOG" 2>&1
 
 SCORE=$(grep "^glmark2 Score:" "$GL_LOG" | awk '{print $3}')
 if [ -n "$SCORE" ]; then
