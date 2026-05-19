@@ -1390,7 +1390,7 @@ glmark2-es2-drm --off-screen --size 320x240 \
     -b build:duration=15 -b texture:duration=15 \
     -b shading:duration=15 -b terrain:duration=15 > "$GL_LOG" 2>&1
 
-SCORE=$(grep "^glmark2 Score:" "$GL_LOG" | awk '{print $3}')
+SCORE=$(grep "glmark2 Score:" "$GL_LOG" | awk '{print $NF}')
 if [ -n "$SCORE" ]; then
     GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
     TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
