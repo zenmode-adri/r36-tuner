@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.3 — 2026-05-19
+
+**Mejora: GPU benchmark — glmark2-es2-drm --off-screen (bench real):**
+- Reemplazado Python pbuffer falso (medía overhead ctypes, no GPU) por `glmark2-es2-drm --off-screen --size 320x240`
+- Score real: ~401 pts (build/texture/shading/bump/effect2d/pulsar/desktop/buffer/ideas/jellyfish/terrain/shadow/refract/conditionals/function/loop)
+- Razón `--off-screen`: glmark2 2023 usa atomic KMS; RK3326 BSP solo soporta legacy KMS → `--off-screen` evita el fallo de modesetting
+- Embedded binario actualizado: `glmark2-es2-wayland 2023.01` → `glmark2-es2-drm 2023.01+dfsg-1 arm64`
+- Embedded data actualizado: `glmark2-data 2014.03` → `glmark2-data 2023.01+dfsg-1`
+- Duración bench: ~5 min (suite completa, 15 escenas)
+
 ## v2.2 — 2026-05-19
 
 **Fix: ARP keepalive script corrompido:**
