@@ -1376,7 +1376,9 @@ BenchmarkGPU() {
         sleep 0.5; i=$((i+1))
     done
     chvt 1 2>/dev/null
-    sleep 2
+    sleep 1
+    printf '\033c' > /dev/tty1
+    sleep 1
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
         --infobox "GPU benchmark (EGL/GBM)...\nEspera ~15s" 5 42 > "$CURR_TTY"
