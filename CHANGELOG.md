@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.7 — 2026-05-19
+
+**Feat: DTBGPUUndervoltMenu — modo Uniform + Fine Tune (igual que CPU):**
+- Menú de modo: Uniform (mismo offset todos los OPPs) / Fine Tune (por OPP)
+- Pasos 12.5 mV (-125 mV a +50 mV), etiquetas en español
+- Preview antes de confirmar: muestra todos los OPPs con voltaje antes → después
+- Parchea solo el bin activo (GPU_BIN_PROP), igual que CPU
+- Preserva multi-value props (min/typ/max) correctamente via loop
+
+**Fix: GPU OPP table real verificada por SSH:**
+- 3 OPPs: 400 MHz (975 mV L2) / 480 MHz (1050 mV L2) / 520 MHz (1100 mV L2)
+- Empezar por -25 mV → 520 MHz: 1075 mV
+
 ## v2.6 — 2026-05-19
 
 **Fix crítico: DTBGPUUndervoltMenu parcheaba solo opp-400000000 (primer nodo sorted):**
