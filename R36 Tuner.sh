@@ -1362,28 +1362,41 @@ GPUInfo() {
 
 BenchmarkGPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "GPU benchmark (EGL/GBM renderD128)...\nPlease wait ~15s" 5 48 > "$CURR_TTY"
-    local GL_LOG="/tmp/gpu_bench_out.txt"
-    python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
-import ctypes, ctypes.util, os, time, sys
+        --yesno "GPU benchmark requiere cerrar EmulationStation brevemente (~20s).\n\nLa pantalla se quedará en negro — es normal.\nEl resultado aparecerá solo y ES se reiniciará.\n\n¿Continuar?" 11 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
 
-# Load libs
+    # Write runner to /tmp — se lanza en cgroup propio via systemd-run
+    # para sobrevivir cuando ES (y este script) mueran
+    cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
+#!/bin/bash
+TTY=/dev/tty1
+GL_LOG=/tmp/gpu_bench_out.txt
+SCORES=/etc/r36_tuner_scores.log
+
+sleep 2  # espera a que el tuner cierre su sesión
+
+systemctl stop emulationstation 2>/dev/null
+i=0
+while pgrep -x emulationstation > /dev/null 2>&1 && [ $i -lt 20 ]; do
+    sleep 0.5; i=$((i+1))
+done
+chvt 1 2>/dev/null
+sleep 1  # espera a que fbcon recupere el display
+
+dialog --title "[ BENCHMARK — GPU ]" \
+    --infobox "GPU benchmark (EGL/GBM)...\nEspera ~15s" 5 42 > $TTY
+
+python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
+import ctypes, os, time, sys
+from ctypes import c_int as c_i, c_uint as c_u, c_void_p as c_vp, c_float as c_f
 try:
     gbm_lib  = ctypes.CDLL("libgbm.so.1")
-    egl_lib  = ctypes.CDLL("libEGL.so.1")
+    egl_lib  = ctypes.CDLL("libEGL.so")
     gles_lib = ctypes.CDLL("libGLESv2.so.2")
 except OSError as e:
-    print(f"ERROR: lib load failed: {e}"); sys.exit(1)
-
-# Types
-c_i  = ctypes.c_int
-c_u  = ctypes.c_uint
-c_vp = ctypes.c_void_p
-c_f  = ctypes.c_float
-
+    print(f"ERROR: lib load: {e}"); sys.exit(1)
 gbm_lib.gbm_create_device.restype  = c_vp
 gbm_lib.gbm_create_device.argtypes = [c_i]
-
 egl_lib.eglGetProcAddress.restype  = c_vp
 egl_lib.eglGetProcAddress.argtypes = [ctypes.c_char_p]
 egl_lib.eglInitialize.restype      = c_u
@@ -1392,95 +1405,82 @@ egl_lib.eglCreateContext.restype   = c_vp
 egl_lib.eglCreatePbufferSurface.restype = c_vp
 egl_lib.eglMakeCurrent.restype     = c_u
 egl_lib.eglSwapBuffers.restype     = c_u
-
-EGL_PLATFORM_GBM = 0x31D7
-EGL_OPENGL_ES2   = 0x30A0
-EGL_NONE         = 0x3038
-EGL_SURFACE_TYPE = 0x3033
-EGL_PBUFFER_BIT  = 0x1
-EGL_RENDERABLE   = 0x3040
-EGL_ES2_BIT      = 0x4
-EGL_CTX_VER      = 0x3098
-EGL_WIDTH        = 0x3057
-EGL_HEIGHT       = 0x3056
-
-# Open render node (no DRM master needed)
+EGL_PLATFORM_GBM=0x31D7; EGL_OPENGL_ES2=0x30A0; EGL_NONE=0x3038
+EGL_SURFACE_TYPE=0x3033; EGL_PBUFFER_BIT=0x1; EGL_RENDERABLE=0x3040
+EGL_ES2_BIT=0x4; EGL_CTX_VER=0x3098; EGL_WIDTH=0x3057; EGL_HEIGHT=0x3056
 try:
-    fd = os.open("/dev/dri/renderD128", os.O_RDWR)
+    fd = os.open("/dev/dri/card0", os.O_RDWR)
 except OSError as e:
-    print(f"ERROR: open renderD128: {e}"); sys.exit(1)
-
+    print(f"ERROR: open card0: {e}"); sys.exit(1)
 gbm_dev = gbm_lib.gbm_create_device(fd)
-if not gbm_dev:
-    print("ERROR: gbm_create_device failed"); sys.exit(1)
-print(f"GBM device OK: {gbm_dev:#x}")
-
-# eglGetPlatformDisplayEXT
-fn_addr = egl_lib.eglGetProcAddress(b"eglGetPlatformDisplayEXT")
-if not fn_addr:
-    print("ERROR: eglGetPlatformDisplayEXT not found"); sys.exit(1)
-getPlatformDisplay = ctypes.CFUNCTYPE(c_vp, c_u, c_vp, c_vp)(fn_addr)
-disp = getPlatformDisplay(EGL_PLATFORM_GBM, c_vp(gbm_dev), None)
-if not disp:
-    print("ERROR: eglGetPlatformDisplayEXT returned NULL"); sys.exit(1)
-print(f"EGL display OK: {disp:#x}")
-
+if not gbm_dev: print("ERROR: gbm_create_device"); sys.exit(1)
+fn = egl_lib.eglGetProcAddress(b"eglGetPlatformDisplayEXT")
+if not fn: print("ERROR: eglGetPlatformDisplayEXT"); sys.exit(1)
+getPD = ctypes.CFUNCTYPE(c_vp, c_u, c_vp, c_vp)(fn)
+disp = getPD(EGL_PLATFORM_GBM, c_vp(gbm_dev), None)
+if not disp: print("ERROR: eglGetPlatformDisplay NULL"); sys.exit(1)
 major, minor = c_i(), c_i()
 if not egl_lib.eglInitialize(c_vp(disp), ctypes.byref(major), ctypes.byref(minor)):
-    print("ERROR: eglInitialize failed"); sys.exit(1)
-print(f"EGL {major.value}.{minor.value} initialized")
-
+    print("ERROR: eglInitialize"); sys.exit(1)
 egl_lib.eglBindAPI(EGL_OPENGL_ES2)
-cfg_attribs = (c_i*9)(EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-                       EGL_RENDERABLE, EGL_ES2_BIT,
-                       0x3024, 8, 0x3023, 8, EGL_NONE)
-cfg = c_vp(); ncfg = c_i()
-egl_lib.eglChooseConfig(c_vp(disp), cfg_attribs, ctypes.byref(cfg), 1, ctypes.byref(ncfg))
-if ncfg.value == 0:
-    print("ERROR: eglChooseConfig no configs"); sys.exit(1)
-print(f"EGL config OK")
-
-ctx_att = (c_i*3)(EGL_CTX_VER, 2, EGL_NONE)
-ctx = egl_lib.eglCreateContext(c_vp(disp), cfg, None, ctx_att)
-if not ctx:
-    print("ERROR: eglCreateContext failed"); sys.exit(1)
-
-pb_att = (c_i*5)(EGL_WIDTH, 256, EGL_HEIGHT, 256, EGL_NONE)
-surf = egl_lib.eglCreatePbufferSurface(c_vp(disp), cfg, pb_att)
-if not surf:
-    print("ERROR: eglCreatePbufferSurface failed"); sys.exit(1)
-
-if not egl_lib.eglMakeCurrent(c_vp(disp), c_vp(surf), c_vp(surf), c_vp(ctx)):
-    print("ERROR: eglMakeCurrent failed"); sys.exit(1)
-print("EGL context active — running benchmark...")
-
-# Benchmark: clear + swap N times, measure fps
-GL_COLOR_BUFFER_BIT = 0x4000
-gles_lib.glClearColor(c_f(0.2), c_f(0.4), c_f(0.8), c_f(1.0))
-N = 300
-t0 = time.monotonic()
+ca = (c_i*9)(EGL_SURFACE_TYPE,EGL_PBUFFER_BIT,EGL_RENDERABLE,EGL_ES2_BIT,0x3024,8,0x3023,8,EGL_NONE)
+cfg=c_vp(); ncfg=c_i()
+egl_lib.eglChooseConfig(c_vp(disp),ca,ctypes.byref(cfg),1,ctypes.byref(ncfg))
+if not ncfg.value: print("ERROR: eglChooseConfig"); sys.exit(1)
+ctx=egl_lib.eglCreateContext(c_vp(disp),cfg,None,(c_i*3)(EGL_CTX_VER,2,EGL_NONE))
+if not ctx: print("ERROR: eglCreateContext"); sys.exit(1)
+surf=egl_lib.eglCreatePbufferSurface(c_vp(disp),cfg,(c_i*5)(EGL_WIDTH,256,EGL_HEIGHT,256,EGL_NONE))
+if not surf: print("ERROR: eglCreatePbufferSurface"); sys.exit(1)
+if not egl_lib.eglMakeCurrent(c_vp(disp),c_vp(surf),c_vp(surf),c_vp(ctx)):
+    print("ERROR: eglMakeCurrent"); sys.exit(1)
+gles_lib.glClearColor(c_f(0.2),c_f(0.4),c_f(0.8),c_f(1.0))
+N=300; t0=time.monotonic()
 for _ in range(N):
-    gles_lib.glClear(GL_COLOR_BUFFER_BIT)
-    egl_lib.eglSwapBuffers(c_vp(disp), c_vp(surf))
-elapsed = time.monotonic() - t0
-fps = N / elapsed
-print(f"GPU Score: {int(fps)}")
+    gles_lib.glClear(0x4000)
+    egl_lib.eglSwapBuffers(c_vp(disp),c_vp(surf))
+print(f"GPU Score: {int(N/(time.monotonic()-t0))}")
 PYEOF
-    local SCORE
-    SCORE=$(grep "^GPU Score:" "$GL_LOG" | awk '{print $3}')
-    local GPU_DISP
-    if [ -n "$SCORE" ]; then
-        GPU_DISP="${SCORE} pts (EGL pbuffer clears/s)"
-        # Save score to history
-        echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=$(GetGPUMaxMHz)MHz vdd=$(GetRegVoltMV "$VDD_LOGIC")mV temp=$(GetTempC)C" >> "$SCORES_FILE"
-    else
-        local GL_TAIL
-        GL_TAIL=$(grep "ERROR\|Traceback\|^GPU" "$GL_LOG" | tail -6 | tr '\n' '|' | sed 's/|/\\n/g')
-        GPU_DISP="sin score:\\n${GL_TAIL}"
-    fi
-    dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
-        --msgbox "Config: GPU $(GetGPUMaxMHz) MHz  vdd_logic: $(GetRegVoltMV "$VDD_LOGIC") mV\nTemp: $(GetTempC)°C\n\nGPU bench: $GPU_DISP" \
-        12 68 > "$CURR_TTY"
+
+SCORE=$(grep "^GPU Score:" "$GL_LOG" | awk '{print $3}')
+if [ -n "$SCORE" ]; then
+    GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
+    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
+    echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
+    MSG="GPU Score: ${SCORE} pts\n\nGuardado en historial."
+else
+    TAIL=$(grep "ERROR" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
+    MSG="Sin score:\n${TAIL}"
+fi
+
+dialog --title "[ GPU RESULTS ]" \
+    --msgbox "${MSG}\n\nReiniciando EmulationStation en 8s..." 10 55 > $TTY
+
+sleep 8
+systemctl start emulationstation 2>/dev/null
+RUNNER_EOF
+
+    chmod +x /tmp/gpu_bench_runner.sh
+
+    # Instalar como servicio systemd (cgroup propio bajo /system.slice/)
+    echo ark | sudo -S bash -c '
+cat > /etc/systemd/system/r36-gpu-bench.service << SVCEOF
+[Unit]
+Description=R36 GPU Benchmark
+[Service]
+Type=simple
+User=root
+StandardInput=null
+StandardOutput=null
+StandardError=null
+ExecStart=/tmp/gpu_bench_runner.sh
+ExecStopPost=rm -f /etc/systemd/system/r36-gpu-bench.service
+SVCEOF
+systemctl daemon-reload
+systemctl start r36-gpu-bench' 2>/dev/null
+
+    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
+        --infobox "GPU benchmark lanzado.\nResultado aparecerá en pantalla (~20s).\nVolviendo al menú..." 6 50 > "$CURR_TTY"
+    sleep 3
 }
 
 BenchmarkSetBaseline() {

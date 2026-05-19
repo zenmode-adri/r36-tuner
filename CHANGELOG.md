@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.2 — 2026-05-19
+
+**Fix: ARP keepalive script corrompido:**
+- `/etc/r36_arp_keepalive.sh` contenía solo `ark` (la contraseña) en vez del script real
+- Resultado: servicio `r36-arp-keepalive` fallaba con `ark: command not found` en cada ciclo (cada ~5s), la ruta al R36 se perdía y la conexión SSH caía
+- Fix: reescrito el script correcto (`ping -c 1 10.124.226.234` en bucle cada 25s)
+
+**Mejora: GPU benchmark — rediseño completo para funcionar con ES activo:**
+- El driver Mali-G31 GBM bloquea `open()` en card0/renderD128 mientras ES tiene DRM master
+- Solución: lanzar el benchmark como servicio systemd (`r36-gpu-bench.service`) con cgroup propio bajo `/system.slice/` — independiente de ES
+- Flujo: confirmar → crear servicio → ES para → `chvt 1` + `sleep 1` (fbcon recupera display) → EGL/GBM benchmark en card0 → resultado en tty1 → ES reinicia
+- Score de referencia: ~26000-27000 pts en Mali-G31 @ 520 MHz
+
+**Fix: Samba desactivado:**
+- `smbd` + `nmbd` corrían siempre en segundo plano (~43 MB RAM) sin ser usados
+- El dispositivo solo usa SCP/SSH para transferencias
+- Fix: `systemctl disable --now smbd nmbd`
+
 ## v2.1 — 2026-05-16
 
 **Fix: shebang `#!/bin/bash` perdido:**
