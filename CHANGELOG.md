@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.6 — 2026-05-19
+
+**Fix crítico: DTBGPUUndervoltMenu parcheaba solo opp-400000000 (primer nodo sorted):**
+- GPU tiene 3 OPPs: 400 MHz (975 mV L2), 480 MHz (1050 mV L2), 520 MHz (1100 mV L2)
+- Bug: el sorted seleccionaba opp-400000000 → GPU a 520 MHz (max) nunca se tocaba → undervolt inefectivo
+- Fix: lee todos los OPPs en arrays, parchea todos (mismo offset)
+- Menú ahora muestra tabla completa de 3 OPPs con voltajes actuales
+- Referencia de offset = OPP max (520 MHz)
+- Confirmación muestra cuántos OPPs se parchean
+
 ## v2.5 — 2026-05-19
 
 **Fix: GetDTBStatus() detecta GPU undervolt además de CPU:**

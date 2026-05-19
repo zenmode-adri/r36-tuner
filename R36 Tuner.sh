@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v2.5 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.6 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.5"
+VERSION="2.6"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -473,71 +473,84 @@ DTBGPUUndervoltMenu() {
         | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
     [ -n "$GPU_BIN" ] && GPU_BIN_PROP="opp-microvolt-${GPU_BIN}"
 
-    # Find GPU OPP node (should be single entry: opp-520000000)
-    local GPU_NODE="" GPU_FREQ_HZ=""
+    # Read ALL GPU OPP nodes into arrays (sorted by freq)
+    local GPU_NODES=() GPU_FREQS_MHZ=() GPU_VOLTS_UV=()
     while IFS= read -r node; do
         [[ "$node" != opp@* ]] && [[ "$node" != opp-* ]] && continue
-        GPU_NODE="${GPU_OPP}/${node}"
-        [[ "$node" == opp@* ]] && GPU_FREQ_HZ="${node#opp@}" || GPU_FREQ_HZ="${node#opp-}"
-        break
+        local freq_hz
+        [[ "$node" == opp@* ]] && freq_hz="${node#opp@}" || freq_hz="${node#opp-}"
+        local vraw; vraw=$(fdtget -t u "$DTB" "$GPU_OPP/$node" "$GPU_BIN_PROP" 2>/dev/null)
+        [ -z "$vraw" ] && vraw=$(fdtget -t u "$DTB" "$GPU_OPP/$node" opp-microvolt 2>/dev/null)
+        [ -z "$vraw" ] && continue
+        GPU_NODES+=("$GPU_OPP/$node")
+        GPU_FREQS_MHZ+=("$(( freq_hz / 1000000 ))")
+        GPU_VOLTS_UV+=("$(echo "$vraw" | awk '{print $1}')")
     done < <(fdtget -l "$DTB" "$GPU_OPP" 2>/dev/null | sort)
 
-    if [ -z "$GPU_NODE" ]; then
+    if [ ${#GPU_NODES[@]} -eq 0 ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
             --msgbox "No OPP entries found in ${GPU_OPP}" 6 50 > "$CURR_TTY"
         return
     fi
 
-    local GPU_FREQ_MHZ=$(( GPU_FREQ_HZ / 1000000 ))
-    local volt_raw; volt_raw=$(fdtget -t u "$DTB" "$GPU_NODE" "$GPU_BIN_PROP" 2>/dev/null)
-    [ -z "$volt_raw" ] && volt_raw=$(fdtget -t u "$DTB" "$GPU_NODE" opp-microvolt 2>/dev/null)
-    local volt_uv; volt_uv=$(echo "$volt_raw" | awk '{print $1}')
-    local volt_mv=$(( volt_uv / 1000 ))
-    local bin_info="opp-microvolt"; [ -n "$GPU_BIN" ] && bin_info="opp-microvolt-${GPU_BIN} (bin: ${GPU_BIN})"
+    # Use max freq OPP (last entry after sort) as reference for menu
+    local MAX_IDX=$(( ${#GPU_NODES[@]} - 1 ))
+    local ref_uv=${GPU_VOLTS_UV[$MAX_IDX]}
+    local ref_mv=$(( ref_uv / 1000 ))
+    local ref_mhz=${GPU_FREQS_MHZ[$MAX_IDX]}
+    local bin_info="opp-microvolt"; [ -n "$GPU_BIN" ] && bin_info="bin: ${GPU_BIN}"
 
-    # Build offset menu (12.5 mV steps, -125 mV to +25 mV)
-    local TABLE="GPU OPP: ${GPU_FREQ_MHZ} MHz\nProp: ${bin_info}\nVoltaje actual: ${volt_mv} mV\n\nSelecciona offset:"
+    # Build table display (all OPPs)
+    local TABLE="GPU OPP table (${bin_info})\n"
+    for i in "${!GPU_NODES[@]}"; do
+        local mv=$(( GPU_VOLTS_UV[i] / 1000 ))
+        local suffix=""; [ "$i" -eq "$MAX_IDX" ] && suffix=" ← max"
+        TABLE+="  ${GPU_FREQS_MHZ[i]} MHz  →  ${mv} mV${suffix}\n"
+    done
+    TABLE+="\nOffset aplica a todos los OPPs:"
+
+    # Build offset menu based on max OPP voltage
     local OPTS=()
     local step_uv=12500
     for raw_step in -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 1 2; do
         local off_uv=$(( raw_step * step_uv ))
-        local off_mv_num=$(( off_uv / 1000 ))
-        local result_mv=$(( volt_mv + off_mv_num ))
+        local off_mv=$(( off_uv / 1000 ))
+        local result_mv=$(( ref_mv + off_mv ))
         [ "$result_mv" -lt 700 ] && continue
         [ "$result_mv" -gt 1350 ] && continue
-        local sign="+"; [ "$off_mv_num" -lt 0 ] && sign=""
-        OPTS+=("$off_uv" "${sign}${off_mv_num} mV  →  ${result_mv} mV")
+        local sign="+"; [ "$off_mv" -lt 0 ] && sign=""
+        OPTS+=("$off_uv" "${sign}${off_mv} mV  →  ${ref_mhz} MHz: ${result_mv} mV")
     done
 
     local OFFSET_UV
     OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
         --ok-label "Apply" --cancel-label "Back" \
-        --menu "$TABLE" 20 55 10 "${OPTS[@]}" 2>&1 > "$CURR_TTY")
+        --menu "$TABLE" 22 58 10 "${OPTS[@]}" 2>&1 > "$CURR_TTY")
     [ -z "$OFFSET_UV" ] && return
 
-    local new_uv=$(( volt_uv + OFFSET_UV ))
-    local new_mv=$(( new_uv / 1000 ))
-    local new_vals="${new_uv} ${new_uv} ${new_uv}"
-
+    local new_ref_mv=$(( ref_mv + OFFSET_UV / 1000 ))
     local offset_mv=$(( OFFSET_UV / 1000 ))
+
     dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — CONFIRM ]" \
-        --yesno "GPU ${GPU_FREQ_MHZ} MHz: ${volt_mv} mV → ${new_mv} mV (${offset_mv} mV offset)\nProp: ${GPU_BIN_PROP}\n\nReboot required. Safety service activo." \
-        9 58 > "$CURR_TTY"
+        --yesno "${#GPU_NODES[@]} OPPs parchados (${offset_mv} mV cada uno)\n${ref_mhz} MHz: ${ref_mv} mV → ${new_ref_mv} mV\nProp: ${GPU_BIN_PROP}\n\nReboot required. Safety service activo." \
+        9 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     if [ ! -f "${DTB}.bak" ]; then
         cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup fallido." 5 35 > "$CURR_TTY"; return; }
     fi
 
-    dialog --infobox "Parcheando GPU OPP..." 4 35 > "$CURR_TTY"
+    dialog --infobox "Parcheando ${#GPU_NODES[@]} GPU OPPs..." 4 40 > "$CURR_TTY"
     local FAIL=0
-    for prop in opp-microvolt opp-microvolt-L0 opp-microvolt-L1 opp-microvolt-L2 opp-microvolt-L3; do
-        local cur_raw; cur_raw=$(fdtget -t u "$DTB" "$GPU_NODE" "$prop" 2>/dev/null)
-        [ -z "$cur_raw" ] && continue
-        local cur_uv; cur_uv=$(echo "$cur_raw" | awk '{print $1}')
-        local n_uv=$(( cur_uv + OFFSET_UV ))
-        [ "$n_uv" -lt 700000 ] && n_uv=700000
-        fdtput -t u "$DTB" "$GPU_NODE" "$prop" "$n_uv" "$n_uv" "$n_uv" 2>/dev/null || FAIL=1
+    for gpu_node in "${GPU_NODES[@]}"; do
+        for prop in opp-microvolt opp-microvolt-L0 opp-microvolt-L1 opp-microvolt-L2 opp-microvolt-L3; do
+            local cur_raw; cur_raw=$(fdtget -t u "$DTB" "$gpu_node" "$prop" 2>/dev/null)
+            [ -z "$cur_raw" ] && continue
+            local cur_uv; cur_uv=$(echo "$cur_raw" | awk '{print $1}')
+            local n_uv=$(( cur_uv + OFFSET_UV ))
+            [ "$n_uv" -lt 700000 ] && n_uv=700000
+            fdtput -t u "$DTB" "$gpu_node" "$prop" "$n_uv" "$n_uv" "$n_uv" 2>/dev/null || FAIL=1
+        done
     done
 
     if [ "$FAIL" -eq 1 ]; then
@@ -549,7 +562,7 @@ DTBGPUUndervoltMenu() {
     touch "$DTB_PENDING"
     SetupDTBSafetyService
     dialog --backtitle "$BACKTITLE" --title "✓ GPU Undervolted" \
-        --yesno "GPU parchada: ${volt_mv} mV → ${new_mv} mV\nSafety service activo.\n\n¿Reiniciar ahora?" 9 50 > "$CURR_TTY" && reboot
+        --yesno "${#GPU_NODES[@]} OPPs parchados: ${offset_mv} mV\n${ref_mhz} MHz: ${ref_mv} mV → ${new_ref_mv} mV\nSafety service activo.\n\n¿Reiniciar ahora?" 10 52 > "$CURR_TTY" && reboot
 }
 
 # ── CPU Tuning ────────────────────────────────────────────────────────────────
