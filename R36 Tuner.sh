@@ -1370,7 +1370,7 @@ BenchmarkGPU() {
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --yesno "GPU benchmark real (glmark2-es2-drm --off-screen).\nDuración: ~5 min. Pantalla negra — normal.\nResultado aparece al volver al menú.\n\n¿Continuar?" 10 58 > "$CURR_TTY"
+        --yesno "GPU benchmark (glmark2-es2-drm --off-screen).\nDuración: ~1 min. Pantalla negra — normal.\nResultado aparece al volver al menú.\n\n¿Continuar?" 10 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
@@ -1386,14 +1386,17 @@ pkill -9 -x emulationstation 2>/dev/null
 sleep 1
 
 rm -f "$GL_LOG"
-glmark2-es2-drm --off-screen --size 320x240 > "$GL_LOG" 2>&1
+glmark2-es2-drm --off-screen --size 320x240 --duration 15 \
+    -b build -b texture -b shading -b terrain > "$GL_LOG" 2>&1
 
 SCORE=$(grep "^glmark2 Score:" "$GL_LOG" | awk '{print $3}')
 if [ -n "$SCORE" ]; then
     GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
     TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
+    SCENES=$(grep "^\[" "$GL_LOG" | awk '{print $1, $NF}' | tr '\n' '\n')
     echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
-    printf "GPU Score: %s pts\n\nGPU: %sMHz  Temp: %sC\nGuardado en historial." "$SCORE" "$GPU_MHZ" "$TEMP" > "$PENDING"
+    printf "GPU Score: %s pts\nGPU: %sMHz  Temp: %sC\n\n%s\nGuardado en historial." \
+        "$SCORE" "$GPU_MHZ" "$TEMP" "$SCENES" > "$PENDING"
 else
     ERR=$(grep -i "error\|failed\|warning" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
     printf "GPU bench fallido.\n\n%s" "$ERR" > "$PENDING"
@@ -1420,7 +1423,7 @@ systemctl daemon-reload
 systemctl start r36-gpu-bench' 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "GPU bench iniciado (~5 min).\nPantalla negra mientras corre.\nVuelve al menú para ver resultado." 7 52 > "$CURR_TTY"
+        --infobox "GPU bench iniciado (~1 min).\nPantalla negra mientras corre.\nVuelve al menú para ver resultado." 7 52 > "$CURR_TTY"
     sleep 4
 }
 
@@ -1540,7 +1543,7 @@ BenchmarkMenu() {
                     21 62 9 \
                     1 "CPU           — sha256                (~60s)" \
                     2 "RAM           — 128MB r/w             (~8s)" \
-                    3 "GPU           — glmark2-es2-drm        (~5min)" \
+                    3 "GPU           — glmark2-es2-drm        (~1min)" \
                     4 "All           — CPU + RAM + GPU" \
                     5 "CPU Stress    — 5min full load, abort 85°C" \
                     6 "Validate      — benchmark + stress + veredicto" \

@@ -2,6 +2,11 @@
 
 ## v2.3 — 2026-05-19
 
+**Mejora: GPU benchmark — reducir duración de 5 min a ~1 min:**
+- Subset de 4 escenas representativas: build, texture, shading, terrain
+- `--duration 15` por escena en vez de ~30s default
+- Resultado muestra FPS por escena + score final
+
 **Mejora: GPU benchmark — glmark2-es2-drm --off-screen (bench real):**
 - Reemplazado Python pbuffer falso (medía overhead ctypes, no GPU) por `glmark2-es2-drm --off-screen --size 320x240`
 - Score real: ~401 pts (build/texture/shading/bump/effect2d/pulsar/desktop/buffer/ideas/jellyfish/terrain/shadow/refract/conditionals/function/loop)
