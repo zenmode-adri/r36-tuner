@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.4 — 2026-05-19
+
+**Feat: ValidateGPUUndervolt — test terrain off-screen ~30s:**
+- Nuevo item en BenchmarkMenu: "Validate GPU UV — terrain ~30s + recomendación"
+- Corre solo escena terrain off-screen (~30s), parsea fps real
+- Muestra resultado + recomendación: probar con juego real (RetroArch, PPSSPP, DraStic)
+- Guarda entry en historial (`GPU-UV X fps`)
+
+**Fix: confirm GPU undervolt mostraba offset incorrecto:**
+- `${OFFSET_UV/1000/}` (string replace) → `$(( OFFSET_UV / 1000 ))` (aritmética)
+- Ejemplo previo: -125 mV aparecía como "-125000 mV"
+
+**Previo v2.4 — glmark2 on-screen — cross-compilado para legacy KMS:**
+- glmark2 2023 (bundled) usa atomic KMS → RK3326 solo soporta legacy → rendering on-screen imposible
+- Solución: cross-compilar glmark2 2021.02 en Windows via WSL1 + toolchain `aarch64-linux-gnu-gcc 13.3`
+- 2021.02 usa `drmModeSetCrtc()` (legacy KMS) en vez de atomic → compatible con RK3326
+- Fix aplicado al código fuente: `#include <utility>` faltante en `libmatrix/program.h` (incompatibilidad con GCC 13)
+- Multiarch arm64 en Ubuntu 24.04: `ports.ubuntu.com` para libs arm64 (`libgbm-dev`, `libegl-dev`, `libdrm-dev`, `libudev-dev`)
+- Meson cross-file con `PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig`
+- Binario resultante: `glmark2-es2-drm` ELF arm64 1.1MB — pendiente test on-screen en dispositivo
+
 ## v2.3 — 2026-05-19
 
 **Mejora: GPU benchmark — reducir duración de 5 min a ~1 min:**

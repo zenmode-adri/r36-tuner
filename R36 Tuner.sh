@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v1.1 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.4 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.0"
+VERSION="2.4"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -489,8 +489,9 @@ DTBGPUUndervoltMenu() {
     local new_mv=$(( new_uv / 1000 ))
     local new_vals="${new_uv} ${new_uv} ${new_uv}"
 
+    local offset_mv=$(( OFFSET_UV / 1000 ))
     dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — CONFIRM ]" \
-        --yesno "GPU ${GPU_FREQ_MHZ} MHz: ${volt_mv} mV → ${new_mv} mV (${OFFSET_UV/1000/} mV offset)\nProp: ${GPU_BIN_PROP}\n\nReboot required. Safety service activo." \
+        --yesno "GPU ${GPU_FREQ_MHZ} MHz: ${volt_mv} mV → ${new_mv} mV (${offset_mv} mV offset)\nProp: ${GPU_BIN_PROP}\n\nReboot required. Safety service activo." \
         9 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
@@ -1534,6 +1535,52 @@ ValidateUndervolt() {
         11 54 > "$CURR_TTY"
 }
 
+ValidateGPUUndervolt() {
+    if ! command -v glmark2-es2-drm >/dev/null 2>&1; then
+        dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
+            --yesno "glmark2-es2-drm no encontrado.\n¿Instalar desde paquete bundled (~20s)?" 7 52 > "$CURR_TTY"
+        [ $? -ne 0 ] && return
+        InstallGlmark2 || { dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
+            --msgbox "Instalación fallida." 5 35 > "$CURR_TTY"; return 1; }
+    fi
+
+    local DTB_ST; DTB_ST=$(GetDTBStatus)
+    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
+        --yesno "Test GPU undervolt — terrain off-screen (~30s).\n\nDTB: ${DTB_ST}\nPantalla negra mientras corre — normal.\n\n¿Continuar?" 10 56 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
+        --infobox "Parando EmulationStation...\nGlmark2 terrain off-screen ~30s.\nEspera — pantalla negra es normal." 6 52 > "$CURR_TTY"
+    sleep 2
+    systemctl stop emulationstation 2>/dev/null
+    sleep 2
+    pkill -9 -x emulationstation 2>/dev/null
+    sleep 1
+
+    local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
+    glmark2-es2-drm --off-screen --size 320x240 -b terrain:duration=30 > "$GL_LOG" 2>&1
+
+    systemctl start emulationstation 2>/dev/null
+    sleep 1
+
+    local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
+    local SCORE; SCORE=$(grep "glmark2 Score:" "$GL_LOG" | awk '{print $NF}')
+    local GPU_MHZ; GPU_MHZ=$(GetGPUCurMHz)
+    local TEMP; TEMP=$(GetTempC)
+
+    if [ -n "$FPS" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain)  DTB=${DTB_ST}  GPU=${GPU_MHZ}MHz  temp=${TEMP}C" >> "$SCORES_FILE"
+        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULTADO ]" \
+            --msgbox "Terrain off-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\n\nPara validación real, prueba con un\njuego (RetroArch, PPSSPP, DraStic).\nArtifacts / freeze / crash = inestable.\n\nResultado guardado en historial." \
+            14 56 > "$CURR_TTY"
+    else
+        local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
+        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — FALLIDO ]" \
+            --msgbox "glmark2 terrain fallido.\n\n${ERR}" 9 56 > "$CURR_TTY"
+    fi
+    rm -f "$GL_LOG"
+}
+
 BenchmarkMenu() {
     local CHOICE
     CHOICE=$(dialog --backtitle "$BACKTITLE" \
@@ -1541,30 +1588,32 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    21 62 9 \
-                    1 "CPU           — sha256                (~60s)" \
-                    2 "RAM           — 128MB r/w             (~8s)" \
-                    3 "GPU           — glmark2-es2-drm        (~1min)" \
-                    4 "All           — CPU + RAM + GPU" \
-                    5 "CPU Stress    — 5min full load, abort 85°C" \
-                    6 "Validate      — benchmark + stress + veredicto" \
-                    7 "Set Baseline  — mark next CPU run as 100%" \
-                    8 "View History  — scrollable, all entries" \
-                    9 "Clear History — delete log and baseline" \
-                    10 "GPU Info      — diagnose EGL/DRM/fbdev" \
+                    22 62 10 \
+                    1  "CPU           — sha256                (~60s)" \
+                    2  "RAM           — 128MB r/w             (~8s)" \
+                    3  "GPU           — glmark2-es2-drm        (~1min)" \
+                    4  "All           — CPU + RAM + GPU" \
+                    5  "CPU Stress    — 5min full load, abort 85°C" \
+                    6  "Validate CPU  — benchmark + stress + veredicto" \
+                    7  "Validate GPU UV — terrain ~30s + recomendación" \
+                    8  "Set Baseline  — mark next CPU run as 100%" \
+                    9  "View History  — scrollable, all entries" \
+                    10 "Clear History — delete log and baseline" \
+                    11 "GPU Info      — diagnose EGL/DRM/fbdev" \
                     2>&1 > "$CURR_TTY")
     [ $? -ne 0 ] && return
     case $CHOICE in
-        1) BenchmarkCPU ;;
-        2) BenchmarkRAM ;;
-        3) BenchmarkGPU ;;
-        4) BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
-        5) StressTestCPU ;;
-        6) ValidateUndervolt ;;
-        7) BenchmarkSetBaseline ;;
-        8) BenchmarkViewHistory ;;
-        9) BenchmarkClearHistory ;;
-        10) GPUInfo ;;
+        1)  BenchmarkCPU ;;
+        2)  BenchmarkRAM ;;
+        3)  BenchmarkGPU ;;
+        4)  BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
+        5)  StressTestCPU ;;
+        6)  ValidateUndervolt ;;
+        7)  ValidateGPUUndervolt ;;
+        8)  BenchmarkSetBaseline ;;
+        9)  BenchmarkViewHistory ;;
+        10) BenchmarkClearHistory ;;
+        11) GPUInfo ;;
     esac
 }
 
