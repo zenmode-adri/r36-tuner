@@ -1362,15 +1362,6 @@ GPUInfo() {
 
 BenchmarkGPU() {
     local GL_LOG=/tmp/gpu_bench_out.txt
-    local PENDING=/tmp/gpu_bench_pending
-
-    # Mostrar resultado de ejecución anterior si existe
-    if [ -f "$PENDING" ]; then
-        local PREV; PREV=$(cat "$PENDING")
-        rm -f "$PENDING"
-        dialog --backtitle "$BACKTITLE" --title "[ GPU — RESULTADO ANTERIOR ]" \
-            --msgbox "${PREV}" 8 52 > "$CURR_TTY"
-    fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
         --yesno "GPU benchmark para EmulationStation ~25s.\nPantalla en negro — normal.\nResultado aquí al volver al tuner.\n\n¿Continuar?" 9 55 > "$CURR_TTY"
@@ -1765,6 +1756,14 @@ if [ -f "$OC_PENDING" ]; then
             --msgbox "1608 MHz NO aparece en scaling_available_frequencies.\n\nEl clock driver del kernel tiene un tope en 1512 MHz.\nNo es posible superar 1512 MHz sin recompilar\nel kernel de dArkOSRE.\n\nEl nodo OPP fue añadido al DTB correctamente\npero el kernel lo rechazó en tiempo de boot." \
             12 64 > "$CURR_TTY"
     fi
+fi
+
+# Mostrar resultado de GPU bench si hay uno pendiente
+if [ -f /tmp/gpu_bench_pending ]; then
+    PENDING_MSG=$(cat /tmp/gpu_bench_pending)
+    rm -f /tmp/gpu_bench_pending
+    dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULTADO ]" \
+        --msgbox "${PENDING_MSG}" 8 52 > "$CURR_TTY"
 fi
 
 trap ExitMenu EXIT
