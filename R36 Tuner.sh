@@ -1364,9 +1364,25 @@ BenchmarkGPU() {
     local GL_LOG=/tmp/gpu_bench_out.txt
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "GPU benchmark (EGL/GBM pbuffer)...\nEspera ~15s" 5 46 > "$CURR_TTY"
+        --yesno "GPU benchmark necesita parar EmulationStation ~20s.\nLa pantalla se pondrá en negro — es normal.\nEl resultado aparece en este menú al terminar.\n\n¿Continuar?" 10 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
 
-    python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
+    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
+        --infobox "Parando EmulationStation..." 4 38 > "$CURR_TTY"
+
+    systemctl stop emulationstation 2>/dev/null
+    local i=0
+    while pgrep -x emulationstation > /dev/null 2>&1 && [ $i -lt 20 ]; do
+        sleep 0.5; i=$((i+1))
+    done
+    chvt 1 2>/dev/null
+    sleep 2
+
+    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
+        --infobox "GPU benchmark (EGL/GBM)...\nEspera ~15s" 5 42 > "$CURR_TTY"
+
+    rm -f "$GL_LOG"
+    timeout 30 python3 - > "$GL_LOG" 2>&1 <<'PYEOF'
 import ctypes, os, time, sys
 from ctypes import c_int as c_i, c_uint as c_u, c_void_p as c_vp, c_float as c_f
 try:
@@ -1388,14 +1404,10 @@ egl_lib.eglSwapBuffers.restype     = c_u
 EGL_PLATFORM_GBM=0x31D7; EGL_OPENGL_ES2=0x30A0; EGL_NONE=0x3038
 EGL_SURFACE_TYPE=0x3033; EGL_PBUFFER_BIT=0x1; EGL_RENDERABLE=0x3040
 EGL_ES2_BIT=0x4; EGL_CTX_VER=0x3098; EGL_WIDTH=0x3057; EGL_HEIGHT=0x3056
-fd = None
-for dev in ("/dev/dri/renderD128", "/dev/dri/card0"):
-    try:
-        fd = os.open(dev, os.O_RDWR); break
-    except OSError:
-        continue
-if fd is None:
-    print("ERROR: no DRI device available"); sys.exit(1)
+try:
+    fd = os.open("/dev/dri/card0", os.O_RDWR)
+except OSError as e:
+    print(f"ERROR: open card0: {e}"); sys.exit(1)
 gbm_dev = gbm_lib.gbm_create_device(fd)
 if not gbm_dev: print("ERROR: gbm_create_device"); sys.exit(1)
 fn = egl_lib.eglGetProcAddress(b"eglGetPlatformDisplayEXT")
@@ -1433,13 +1445,15 @@ PYEOF
         TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
         echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES_FILE"
         dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
-            --msgbox "GPU Score: ${SCORE} pts\n\nGuardado en historial." 8 45 > "$CURR_TTY"
+            --msgbox "GPU Score: ${SCORE} pts\n\nGuardado en historial.\n\nReiniciando EmulationStation..." 10 50 > "$CURR_TTY"
     else
         local ERR
         ERR=$(grep "ERROR" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
         dialog --backtitle "$BACKTITLE" --title "[ GPU RESULTS ]" \
-            --msgbox "Sin score.\n\n${ERR}" 9 55 > "$CURR_TTY"
+            --msgbox "Sin score.\n\n${ERR}\n\nReiniciando EmulationStation..." 10 55 > "$CURR_TTY"
     fi
+
+    systemctl start emulationstation 2>/dev/null
 }
 
 BenchmarkSetBaseline() {
