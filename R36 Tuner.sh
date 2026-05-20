@@ -867,7 +867,7 @@ DTBUndervoltMenu() {
 
     # DMC / RAM OC 928 MHz — needs only DTB path, searches its own OPP table
     if [ "$ACTION" = "dmcoc" ]; then
-        DTBDMCOC "$DTB"
+        DTBRAMOC "$DTB"
         return
     fi
 
@@ -1323,7 +1323,7 @@ DTBGPUOC() {
 
 # ── DMC / RAM OC 928 MHz ─────────────────────────────────────────────────────
 
-DTBDMCOC() {
+DTBRAMOC() {
     local DTB="$1"
 
     # Find DMC OPP table node
