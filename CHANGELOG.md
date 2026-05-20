@@ -2,19 +2,18 @@
 
 ## v2.8 — 2026-05-20
 
-**Limpieza de menús — eliminados ítems obsoletos/muertos:**
-- OC Experiment (1608 MHz) eliminado del submenú DTB Undervolt — kernel ignora el OPP, cap en 1512 MHz
-- DMC / RAM Tuning eliminado del menú principal — ATF controla el DMC, sysfs inaccesible en R36
-- Voltage Info convertido a read-only (solo muestra voltajes) — OPP framework revierte cualquier write
-- GPU Info eliminado del menú Benchmark — herramienta de diagnóstico de desarrollo, inútil para usuario final
-- Menú principal: 13 → 12 ítems
+**Menu cleanup — removed stale/dead entries:**
+- OC Experiment (1608 MHz) removed from DTB Undervolt submenu — kernel ignores the OPP, hard cap at 1512 MHz
+- DMC / RAM Tuning removed from main menu — ATF owns DMC, sysfs inaccessible on R36
+- Voltage Info converted to read-only — OPP framework reverts all writes, display only
+- GPU Info removed from Benchmark — internal debug tool, not useful for end users
+- Main menu: 13 → 12 items
 
-**Limpieza de código muerto:**
-- Eliminadas funciones huérfanas: `DTBOCApply`, `DMCTuningMenu`, `SetVoltForReg`, `ApplyVolt`, `GPUInfo`, `GetDMCAvail`
-- Eliminado startup check de OC_PENDING
-- Eliminada variable `OC_PENDING`
-- Eliminado sufijo `— ELITE HYBRID` del backtitle
-- -258 líneas de dead code
+**Dead code removal:**
+- Removed orphaned functions: `DTBOCApply`, `DMCTuningMenu`, `SetVoltForReg`, `ApplyVolt`, `GPUInfo`, `GetDMCAvail`
+- Removed OC_PENDING startup check and variable
+- Removed stale `— ELITE HYBRID` backtitle suffix
+- -258 lines of dead code
 
 ## v2.7 — 2026-05-19
 
