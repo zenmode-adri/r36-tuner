@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.9 — 2026-05-20 (updated)
+
+**Fix: CPU benchmark duration and accuracy:**
+- `openssl speed -seconds 60` tested 6 block sizes × 60s = ~6 min total — now uses `-seconds 5` for ~35s total
+- Benchmark now forces `performance` governor before measuring and restores original governor after
+- Ensures CPU runs at max frequency during the test regardless of active governor
+
 ## v2.9 — 2026-05-20
 
 **Fix: ValidateGPUUndervolt — EmulationStation stop/start required sudo:**
