@@ -216,25 +216,60 @@ Possible only if GPU can clock higher at current voltage (1100 mV L2), which is 
 
 ### DMC OPP table — all bins (mV)
 
-Node: `/dmc-opp-table` · Rail: `vdd_logic` (shared with GPU and SoC logic)
+Node: `/dmc-opp-table` · Rail: `vdd_logic` (shared with GPU and SoC logic)  
+`rockchip,max-volt = 1150000` · ATF version: `0x105` · Bin active: **L2**
 
-| MHz | L0   | L1   | **L2** | L3   |
-|-----|------|------|--------|------|
+| MHz | L0   | L1   | **L2**   | L3   |
+|-----|------|------|----------|------|
 | 528 | 975  | 975  | **950**  | 950  |
 | 666 | 1050 | 1000 | **975**  | 950  |
 | 786 | 1100 | 1050 | **1025** | 1000 |
+| **928** | — | — | **1075** | — |
+
+> 928 MHz row added via OC patch (see DMC OC section below).  
+> OPP node values: `opp-microvolt-L2 = 1075000`, `opp-microvolt = 1100000`.  
+> ATF delivers **924 MHz** (nearest PLL divisor to the requested 928 MHz).
 
 ### DMC Undervolt — not worth it
 
-The DMC shares `vdd_logic` with the GPU. The PMIC sets the rail voltage to the maximum demanded by any consumer at a given moment. When the GPU runs at 520 MHz (demanding 1087.5 mV with our patch), the DMC receives that same voltage regardless of its own OPP. Patching DMC L2 voltages lower would only save power in the narrow window where GPU is at low freq and DMC is at high freq — marginal benefit. Risk: DDR memory instability → random crashes and data corruption.
+The DMC shares `vdd_logic` with the GPU. The PMIC sets the rail to the maximum demanded by any consumer. When GPU OC is active at 1150 mV, DMC receives that same voltage regardless of its own OPP entry. Patching DMC L2 voltages lower has no effect on the rail — marginal power benefit at best, risk of DDR instability at worst.
 
-### RAM OC — not possible via DTB
+### DMC OC — 928 MHz (confirmed working)
 
-DMC frequency is controlled by **ATF (ARM Trusted Firmware)**, not the kernel. Confirmed from dmesg:
+**Previous documentation incorrectly stated "RAM OC not possible via DTB."**
+
+The correct model: ATF owns the *frequency switching* (register writes, DDR training). The kernel DMC devfreq driver determines *which frequencies to expose* from the DTB OPP table. Adding an OPP node causes the kernel to request that frequency via ATF SMC call.
+
+**ATF v0x105 has timing support for 928 MHz LPDDR4.** Confirmed:
+
+1. Added `opp-928000000` node to `/dmc-opp-table`
+2. After reboot: `available_frequencies` = `528000000 666000000 786000000 928000000`
+3. Set `governor = performance` → `cur_freq = 924000000` — system stable, no hang
+4. Ran glmark2 terrain under sustained DMC 924 MHz + GPU 600 MHz — stable, no crash
+
+**DTB changes:**
+
+```bash
+fdtput -c  /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-hz 0 928000000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 1075000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 1100000
 ```
-rockchip-dmc dmc: current ATF version 0x105
-```
-The kernel devfreq interface for DMC has no accessible `available_frequencies` — ATF owns DDR frequency transitions via SMC calls. Overclocking RAM would require modifying the ATF binary in the bootloader, for which dArkOSRE provides no source. Not feasible.
+
+**Benchmark results (terrain off-screen, GPU OC 600 MHz active):**
+
+| Condition | DMC freq | terrain fps | Conclusion |
+|-----------|----------|-------------|------------|
+| GPU OC only | 786 MHz | 18 | baseline |
+| GPU OC + DMC OC | 924 MHz | 18 | terrain = compute-bound |
+
+terrain shows no change because Mali-G31 at 600 MHz is ALU-saturated. Expected benefits in real workloads:
+- **Emulation JIT**: CPU reads guest code + emulator state from RAM constantly → real speedup
+- **Texture sampling (UMA)**: Mali-G31 reads textures from system RAM each frame → more bandwidth available
+- **Loading times**: ROM decompression, save states, asset streaming → pure bandwidth
+- **Sustained performance**: CPU + GPU competing for same bus → more headroom for both
+
+**Voltage note:** When GPU OC is active (vdd_logic = 1150 mV), DMC OC at 1075 mV adds zero voltage cost — the rail is already at its PMIC max. Both OCs can coexist on the same rail without conflict.
 
 ---
 

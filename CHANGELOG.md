@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.3 — 2026-05-21
+
+**Feat: RAM OC 928 MHz — DTBDMCOC() integrated into DTB menu:**
+- DMC OC confirmed working: ATF v0x105 supports 928 MHz — delivers 924 MHz (nearest PLL divisor)
+- New menu item "RAM OC 928 MHz" in DTB Undervolt submenu, after GPU OC entry
+- Menu item shows `[ACTIVE]` if 928 MHz is present in DMC `available_frequencies`
+- `DTBDMCOC()`: adds `opp-928000000` to `/dmc-opp-table`; no equivalent of `avs-scale` needed
+- Voltage selector: 1075 / 1062.5 / 1050 mV (L2 bin). vdd_logic shared with GPU — at 1150 mV when GPU OC active, no extra voltage cost
+- +18% RAM bandwidth over 786 MHz. Benefit: CPU JIT, texture reads, emulator loading times
+- GPU compute-bound workloads (terrain): no fps change (confirmed). Emulation mixed workloads: real benefit
+- Same backup/safety-service/reboot flow as all other DTB patches
+
+**Fix: corrected wrong claim in docs — RAM OC IS possible via DTB:**
+- README and opp-research.md previously stated "RAM OC not possible via DTB — ATF owns DMC"
+- Reality: ATF owns the *frequency switching*, but the kernel *exposes available frequencies from DTB OPP table*
+- Adding an OPP node → kernel requests it → ATF executes the switch. Confirmed working.
+
 ## v3.2 — 2026-05-21
 
 **Feat: GPU OC 600 MHz — integrated into DTB menu (`DTBGPUOC()`):**

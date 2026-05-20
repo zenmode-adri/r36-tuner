@@ -11,6 +11,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Offsets from -100 mV to +50 mV. Reboot required.
 - **CPU OC to 1608 MHz** — unlocks 1608 MHz by patching `rockchip,avs-scale` in the DTB (no kernel recompile needed). The PX30/RK3326 clock driver already contains 1608 MHz; it was being suppressed by the AVS mechanism at runtime.
 - **GPU OC to 600 MHz** — adds a 600 MHz OPP to the GPU OPP table in the DTB. The GPU composite clock uses GPLL/2 = 600 MHz exactly; no clock driver changes needed.
+- **RAM OC to 928 MHz** — adds a 928 MHz OPP to the DMC OPP table. ATF v0x105 supports the frequency and delivers 924 MHz (nearest PLL divisor). +18% RAM bandwidth over stock 786 MHz.
 - **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
@@ -50,6 +51,8 @@ Tested results on L2 bin (our test unit — your bin may differ, check dmesg):
 | GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic shared with SoC logic — tight margin) |
 | RAM/DMC (vdd_logic) | — | not recommended | ⚠️ Shares vdd_logic with GPU — benefit marginal, risk high |
 
+> **DMC OC is separate from DMC undervolt** — see [RAM OC — 928 MHz](#ram-oc--928-mhz) below.
+
 ### CPU voltage table — all bins (mV)
 
 Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · Rail: `vdd_arm` · **Bold = our tested bin (L2)**
@@ -81,10 +84,11 @@ Rail: `vdd_logic` (shared with GPU and SoC logic) · Node: `/dmc-opp-table` · *
 | 528 | 975  | 975  | **950**  | 950  |
 | 666 | 1050 | 1000 | **975**  | 950  |
 | 786 | 1100 | 1050 | **1025** | 1000 |
+| **928** | — | — | **1075** | — |
 
 > DMC shares `vdd_logic` with the GPU — the PMIC always sets the rail to the highest voltage demanded by any consumer. Patching DMC voltages lower has marginal effect and risks DDR instability (random crashes, data corruption).
 >
-> **RAM OC is not possible via DTB.** DMC frequency is owned by ATF (ARM Trusted Firmware, version 0x105) via SMC calls — the kernel devfreq interface has no control over it.
+> RAM OC via DTB **is possible** — see [RAM OC — 928 MHz](#ram-oc--928-mhz).
 
 For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
 
@@ -125,6 +129,36 @@ The RK3326 clock driver already contains 1608 MHz in `px30_cpuclk_rates` and `px
 Practical gain of 1608 over 1512 MHz: **+1.6%**. The sweet spot remains **1512 MHz @ 1175 mV** (undervolted). GPU-bound workloads show no difference at any CPU frequency.
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
+
+## RAM OC — 928 MHz
+
+ATF (ARM Trusted Firmware) v0x105 controls DDR frequency switching via SMC calls, but the kernel DMC devfreq driver determines *which frequencies to expose* from the DTB OPP table. Adding an OPP node to `/dmc-opp-table` causes the kernel to request that frequency from ATF, which executes the switch if it has timing support for it.
+
+**Confirmed working on this device:** ATF v0x105 accepts 928 MHz and delivers **924 MHz** (nearest PLL divisor). Verified stable — system survives sustained GPU + DMC load at 924 MHz.
+
+**Voltage:** 1075 mV for L2 bin (conservative). `vdd_logic` is shared with GPU — when GPU OC is active at 1150 mV, there is zero extra voltage cost for DMC OC.
+
+**DTB change required:**
+
+```bash
+fdtput -c  /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-hz 0 928000000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 1075000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 1100000
+```
+
+After reboot, `available_frequencies` shows `528000000 666000000 786000000 928000000`. The `dmc_ondemand` governor scales up to 924 MHz under memory pressure.
+
+**Benchmark results:**
+
+| Condition | DMC freq | terrain fps | Notes |
+|-----------|----------|-------------|-------|
+| Stock | 786 MHz (max) | 18 | dmc_ondemand scales under GPU load |
+| DMC OC | 924 MHz | 18 | terrain is compute-bound — no GPU fps change |
+
+Terrain shows no change because Mali-G31 at 600 MHz is compute-bound, not bandwidth-bound. Benefits are real in mixed CPU+GPU workloads: emulator JIT, texture streaming, ROM loading, save states.
+
+> **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
 
 ## Emergency Recovery — Device Won't Boot
 

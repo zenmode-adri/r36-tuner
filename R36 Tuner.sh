@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.2"
+VERSION="3.3"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -763,15 +763,20 @@ DTBUndervoltMenu() {
     [ -n "$GPU_DEVFREQ" ] && grep -q "600000000" "$GPU_DEVFREQ/available_frequencies" 2>/dev/null \
         && GPU_OC_STATUS=" [ACTIVE]"
 
+    local DMC_OC_STATUS=""
+    grep -q "928000000" /sys/class/devfreq/dmc/available_frequencies 2>/dev/null \
+        && DMC_OC_STATUS=" [ACTIVE]"
+
     local ACTION
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "Permanent OPP voltage patch — reboot required" \
-        18 62 8 \
+        20 62 9 \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
         "oc"      "CPU OC 1608 MHz — unlock via DTB [EXPERIMENTAL]${OC_STATUS}" \
         "gpuoc"   "GPU OC 600 MHz — unlock via DTB [EXPERIMENTAL]${GPU_OC_STATUS}" \
+        "dmcoc"   "RAM OC 928 MHz — unlock via DTB [EXPERIMENTAL]${DMC_OC_STATUS}" \
         "diag"    "Diagnose — disk vs kernel OPP" \
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
@@ -857,6 +862,12 @@ DTBUndervoltMenu() {
     # GPU OC 600 MHz — needs only DTB path, searches its own OPP table
     if [ "$ACTION" = "gpuoc" ]; then
         DTBGPUOC "$DTB"
+        return
+    fi
+
+    # DMC / RAM OC 928 MHz — needs only DTB path, searches its own OPP table
+    if [ "$ACTION" = "dmcoc" ]; then
+        DTBDMCOC "$DTB"
         return
     fi
 
@@ -1305,6 +1316,98 @@ DTBGPUOC() {
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ GPU OC ]" \
+            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+        cp "${DTB}.bak" "$DTB"
+    fi
+}
+
+# ── DMC / RAM OC 928 MHz ─────────────────────────────────────────────────────
+
+DTBDMCOC() {
+    local DTB="$1"
+
+    # Find DMC OPP table node
+    local DMC_OPP=""
+    for candidate in /dmc-opp-table /dmc_opp_table; do
+        fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && DMC_OPP="$candidate" && break
+    done
+    if [ -z "$DMC_OPP" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ DMC OC ]" \
+            --msgbox "DMC OPP table not found in DTB." 6 48 > "$CURR_TTY"
+        return
+    fi
+
+    # Detect bin level — try DMC-specific first, fallback to CPU bin
+    local DMC_BIN_PROP="opp-microvolt"
+    local DMC_BIN; DMC_BIN=$(dmesg 2>/dev/null \
+        | grep "dmc.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+    [ -z "$DMC_BIN" ] && DMC_BIN=$(dmesg 2>/dev/null \
+        | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+    [ -n "$DMC_BIN" ] && DMC_BIN_PROP="opp-microvolt-${DMC_BIN}"
+
+    # Current state — available_frequencies contains 928000000 if OPP active
+    local IS_ACTIVE=0
+    grep -q "928000000" /sys/class/devfreq/dmc/available_frequencies 2>/dev/null \
+        && IS_ACTIVE=1
+    local HAS_NODE=0
+    fdtget "$DTB" "$DMC_OPP/opp-928000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
+
+    local STATE_MSG
+    if   [ $IS_ACTIVE -eq 1 ]; then
+        STATE_MSG="Status: 924 MHz ACTIVE (ATF-delivered, kernel loaded)\n\n"
+    elif [ $HAS_NODE -eq 1 ]; then
+        STATE_MSG="Status: OPP node in DTB but NOT active yet\n(reboot pending)\n\n"
+    else
+        STATE_MSG="Status: not active — DTB patch required\n\n"
+    fi
+
+    dialog --backtitle "$BACKTITLE" --title "[ DMC / RAM OC — 928 MHz ]" \
+        --yesno "${STATE_MSG}ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change.\n\nContinue?" 22 60 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    # Voltage selection
+    local VOLT_UV
+    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DMC OC — VOLTAGE @ 928 MHz ]" \
+        --menu "L2 stock: 786 MHz = 1025 mV  |  PMIC max = 1150 mV:" \
+        13 62 3 \
+        "1075000" "1075 mV  conservative  (recommended)" \
+        "1062500" "1062.5 mV" \
+        "1050000" "1050 mV  aggressive" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$VOLT_UV" ] && return
+
+    local VOLT_MV=$(( VOLT_UV / 1000 ))
+    local VOLT_FRAC=$(( VOLT_UV % 1000 ))
+    local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
+    local BAK_NOTE; [ -f "${DTB}.bak" ] \
+        && BAK_NOTE="Backup: ${DTB}.bak (existing)" \
+        || BAK_NOTE="Backup: ${DTB}.bak (will create)"
+
+    dialog --backtitle "$BACKTITLE" --title "[ DMC OC — CONFIRM ]" \
+        --yesno "Apply RAM OC 928 MHz (ATF: 924 MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/opp-928000000\n    opp-hz: 0 928000000\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    if [ ! -f "${DTB}.bak" ]; then
+        cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
+    fi
+
+    dialog --infobox "Patching DMC OC DTB..." 4 35 > "$CURR_TTY"
+
+    local FAIL=0
+    fdtput -c "$DTB" "$DMC_OPP/opp-928000000" 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-hz 0 928000000 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" "$DMC_BIN_PROP" $VOLT_UV 2>/dev/null || FAIL=1
+    [ "$DMC_BIN_PROP" != "opp-microvolt" ] && \
+        fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-microvolt 1100000 2>/dev/null
+
+    if [ $FAIL -eq 0 ]; then
+        touch "$DTB_PENDING"
+        SetupDTBSafetyService
+        dialog --backtitle "$BACKTITLE" --title "✓ DMC OC Patched" \
+            --yesno "928 MHz OPP added @ ${VOLT_STR} mV\n(ATF delivers 924 MHz)\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+    else
+        dialog --backtitle "$BACKTITLE" --title "[ DMC OC ]" \
             --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
