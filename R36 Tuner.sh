@@ -1228,17 +1228,32 @@ BenchmarkRAM() {
 
 InstallGlmark2Legacy() {
     local dst="/tmp/glmark2-es2-drm-legacy"
-    [ -x "$dst" ] && return 0
+    local data_dst="/tmp/glmark2data"
+    [ -x "$dst" ] && [ -d "$data_dst/shaders" ] && return 0
+
     dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
-        --infobox "Extrayendo glmark2 on-screen (~3s)..." 4 48 > "$CURR_TTY"
-    awk '/^# __GLMARK2_LEGACY_START__$/{f=1;next} /^# __GLMARK2_LEGACY_END__$/{f=0} f' "$0" \
-        | base64 -d > "$dst"
-    if [ ! -s "$dst" ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
-            --msgbox "Error extrayendo binario legacy." 5 45 > "$CURR_TTY"
-        rm -f "$dst"; return 1
+        --infobox "Preparando glmark2 on-screen (~5s)..." 4 50 > "$CURR_TTY"
+
+    if [ ! -x "$dst" ]; then
+        awk '/^# __GLMARK2_LEGACY_START__$/{f=1;next} /^# __GLMARK2_LEGACY_END__$/{f=0} f' "$0" \
+            | base64 -d > "$dst"
+        if [ ! -s "$dst" ]; then
+            dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
+                --msgbox "Error extrayendo binario legacy." 5 45 > "$CURR_TTY"
+            rm -f "$dst"; return 1
+        fi
+        chmod +x "$dst"
     fi
-    chmod +x "$dst"
+
+    # Patch data: glmark2 2023.01 shaders use MEDIUMP_OR_DEFAULT/HIGHP_OR_DEFAULT
+    # which the 2021.02 binary doesn't define — patch them to real qualifiers
+    if [ ! -d "$data_dst/shaders" ]; then
+        mkdir -p "$data_dst/shaders"
+        ln -sf /usr/share/glmark2/models "$data_dst/models"
+        ln -sf /usr/share/glmark2/textures "$data_dst/textures"
+        cp /usr/share/glmark2/shaders/* "$data_dst/shaders/"
+        sed -i 's/MEDIUMP_OR_DEFAULT/mediump/g; s/HIGHP_OR_DEFAULT/highp/g' "$data_dst/shaders/"*
+    fi
 }
 
 InstallGlmark2() {
@@ -1454,9 +1469,7 @@ ValidateGPUUndervolt() {
     sleep 1
 
     local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
-    local DATA_PATH="/usr/share/glmark2"
-    [ ! -d "$DATA_PATH" ] && { InstallGlmark2; DATA_PATH="/usr/share/glmark2"; }
-    echo ark | sudo -S "$LEGACY_BIN" --data-path "$DATA_PATH" \
+    echo ark | sudo -S "$LEGACY_BIN" --data-path /tmp/glmark2data \
         --size 320x240 -b terrain:duration=30 > "$GL_LOG" 2>&1
 
     systemctl start emulationstation 2>/dev/null
