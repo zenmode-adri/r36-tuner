@@ -1160,31 +1160,43 @@ MonitorMenu() {
 # ── Benchmark ─────────────────────────────────────────────────────────────────
 
 BenchmarkCPU() {
+    local CPU_BENCH=/tmp/r36_cpubench
+
+    # Compile benchmark on first use
+    if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
+        cat > /tmp/r36_cpubench.c << 'CSRC'
+#include <stdio.h>
+#include <time.h>
+int main() {
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    volatile unsigned int x = 1;
+    long long iters = 0;
+    do {
+        for (int i = 0; i < 10000000; i++)
+            x = x * 1664525u + 1013904223u;
+        iters += 10000000;
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+    } while ((t1.tv_sec - t0.tv_sec) < 10);
+    printf("%lld\n", iters);
+    return 0;
+}
+CSRC
+        gcc -O2 -o "$CPU_BENCH" /tmp/r36_cpubench.c 2>/dev/null
+    fi
+
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "Prime sieve benchmark...\nPlease wait ~15s" 5 40 > "$CURR_TTY"
+        --infobox "Integer ALU benchmark...\nPlease wait ~10s" 5 40 > "$CURR_TTY"
 
     local GOV_PREV; GOV_PREV=$(GetGOV)
     echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     local SCORE=0 SCORE_DISP="N/A"
-    if command -v python3 >/dev/null 2>&1; then
-        local raw; raw=$(python3 -c "
-import time
-def sieve(n):
-    s = bytearray([1]) * n
-    for i in range(2, int(n**0.5)+1):
-        if s[i]: s[i*i::i] = bytearray(len(s[i*i::i]))
-    return sum(s[2:])
-t = time.time()
-iters = 0
-while time.time() - t < 15:
-    sieve(500000)
-    iters += 1
-print(iters)
-" 2>/dev/null)
+    if [ -x "$CPU_BENCH" ]; then
+        local raw; raw=$("$CPU_BENCH" 2>/dev/null)
         if [ -n "$raw" ] && [ "$raw" -gt 0 ] 2>/dev/null; then
-            SCORE=$raw
-            SCORE_DISP="${raw} iter/15s"
+            SCORE=$(( raw / 1000000 ))
+            SCORE_DISP="${SCORE} Mops/10s"
         fi
     fi
 
@@ -1196,7 +1208,7 @@ print(iters)
             local DIFF=$(( PCT - 100 ))
             local SIGN="+"
             [ $DIFF -lt 0 ] && SIGN=""
-            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} iter/15s)"
+            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} Mops/10s)"
         fi
     else
         echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
@@ -1208,14 +1220,14 @@ print(iters)
     local GOV; GOV=$(GetGOV)
     local TEMP; TEMP=$(GetTempC)
 
-    printf "%s | %s MHz | %s mV | %s | %s°C | primes: %s\n" \
+    printf "%s | %s MHz | %s mV | %s | %s°C | alu: %s\n" \
         "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SCORE_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
     echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nPrime sieve : ${SCORE_DISP}\n${REL_DISP}" \
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}" \
         10 62 > "$CURR_TTY"
 }
 
