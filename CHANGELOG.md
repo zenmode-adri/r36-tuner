@@ -2,6 +2,13 @@
 
 ## v2.9 — 2026-05-20 (updated)
 
+**Feat: CPU benchmark replaced with compiled C ALU benchmark:**
+- Previous SHA256 (hardware crypto, memory-bound) and Python sieve (interpreter-bound) did not scale with CPU frequency
+- New benchmark: LCG integer loop compiled with `gcc -O2` on first use, cached at `/tmp/r36_cpubench`
+- Pure ALU, fits in registers — scales linearly with MHz (confirmed: 1008→1608 MHz = +27%)
+- Runs 10s, reports Mops (millions of operations/10s)
+- Forces `performance` governor before measuring, restores original after
+
 **Fix: CPU benchmark duration and accuracy:**
 - `openssl speed -seconds 60` tested 6 block sizes × 60s = ~6 min total — now uses `-seconds 5` for ~35s total
 - Benchmark now forces `performance` governor before measuring and restores original governor after
