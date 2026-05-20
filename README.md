@@ -63,9 +63,9 @@ Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · 
 
 Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · Rail: `vdd_logic` (shared with SoC logic) · **Bold = our tested bin (L2)**
 
-| MHz | default | L0   | L1   | **L2** | L3   |
-|-----|---------|------|------|--------|------|
-| 400 | 1050    | 1050 | 1025 | **975**  | 950  |
+| MHz | default | L0   | L1   | **L2**  | L3   |
+|-----|---------|------|------|---------|------|
+| 400 | 1050    | 1050 | 1025 | **975** | 950  |
 | 480 | 1125    | 1125 | 1100 | **1050** | 1000 |
 | 520 | 1150    | 1150 | 1150 | **1100** | 1050 |
 
