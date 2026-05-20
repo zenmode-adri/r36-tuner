@@ -287,7 +287,10 @@ SAFETYEOF
     cat > "$CONFIRM_SCRIPT" << 'CONFIRMEOF'
 #!/bin/bash
 BOOTING="/boot/.r36_dtb_patch_booting"
-[ -f "$BOOTING" ] && rm -f "$BOOTING" && sync
+if [ -f "$BOOTING" ]; then
+    rm -f "$BOOTING"
+    sync
+fi
 CONFIRMEOF
     chmod +x "$CONFIRM_SCRIPT"
 
