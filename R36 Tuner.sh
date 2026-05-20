@@ -1161,21 +1161,32 @@ MonitorMenu() {
 
 BenchmarkCPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "sha256 via openssl...\nPlease wait ~35s" 5 40 > "$CURR_TTY"
+        --infobox "Prime sieve benchmark...\nPlease wait ~15s" 5 40 > "$CURR_TTY"
 
     local GOV_PREV; GOV_PREV=$(GetGOV)
     echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
-    local SSL_KBS=0 SSL_DISP="N/A"
-    if command -v openssl >/dev/null 2>&1; then
-        local raw; raw=$(openssl speed -seconds 5 sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
-        if [ -n "$raw" ]; then
-            SSL_KBS=$(echo "$raw" | awk '{printf "%d", $1}')
-            SSL_DISP="$(( SSL_KBS / 1024 )) MB/s"
+    local SCORE=0 SCORE_DISP="N/A"
+    if command -v python3 >/dev/null 2>&1; then
+        local raw; raw=$(python3 -c "
+import time
+def sieve(n):
+    s = bytearray([1]) * n
+    for i in range(2, int(n**0.5)+1):
+        if s[i]: s[i*i::i] = bytearray(len(s[i*i::i]))
+    return sum(s[2:])
+t = time.time()
+iters = 0
+while time.time() - t < 15:
+    sieve(500000)
+    iters += 1
+print(iters)
+" 2>/dev/null)
+        if [ -n "$raw" ] && [ "$raw" -gt 0 ] 2>/dev/null; then
+            SCORE=$raw
+            SCORE_DISP="${raw} iter/15s"
         fi
     fi
-
-    local SCORE=$([ $SSL_KBS -gt 0 ] && echo $(( SSL_KBS / 1024 )) || echo 0)
 
     local REL_DISP=""
     if [ -f "$BASELINE_FILE" ]; then
@@ -1185,7 +1196,7 @@ BenchmarkCPU() {
             local DIFF=$(( PCT - 100 ))
             local SIGN="+"
             [ $DIFF -lt 0 ] && SIGN=""
-            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} MB/s)"
+            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} iter/15s)"
         fi
     else
         echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
@@ -1197,14 +1208,14 @@ BenchmarkCPU() {
     local GOV; GOV=$(GetGOV)
     local TEMP; TEMP=$(GetTempC)
 
-    printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s\n" \
-        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" \
+    printf "%s | %s MHz | %s mV | %s | %s°C | primes: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SCORE_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
     echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256 : ${SSL_DISP}\n${REL_DISP}" \
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nPrime sieve : ${SCORE_DISP}\n${REL_DISP}" \
         10 62 > "$CURR_TTY"
 }
 
