@@ -1,5 +1,5 @@
 #!/bin/bash
-# R36 Tuner v2.8 — CPU / GPU / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.9 — CPU / GPU / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
@@ -1463,7 +1463,7 @@ ValidateGPUUndervolt() {
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
         --infobox "Parando EmulationStation...\nGlmark2 terrain on-screen ~30s." 5 50 > "$CURR_TTY"
     sleep 2
-    systemctl stop emulationstation 2>/dev/null
+    echo ark | sudo -S systemctl stop emulationstation 2>/dev/null
     sleep 2
     pkill -9 -x emulationstation 2>/dev/null
     sleep 1
@@ -1472,7 +1472,7 @@ ValidateGPUUndervolt() {
     echo ark | sudo -S "$LEGACY_BIN" --data-path /tmp/glmark2data \
         --size 320x240 -b terrain:duration=30 > "$GL_LOG" 2>&1
 
-    systemctl start emulationstation 2>/dev/null
+    echo ark | sudo -S systemctl start emulationstation 2>/dev/null
     sleep 1
 
     local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
@@ -1484,7 +1484,7 @@ ValidateGPUUndervolt() {
         local VERDICT="STABLE"
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps muy bajo)"
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULTADO ]" \
-            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVeredicto: ${VERDICT}\n\nBaseline stock: ~17 fps\nArtifacts / freeze / crash = inestable.\n\nResultado guardado en historial." \
+            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVeredicto: ${VERDICT}\n\nBaseline stock: ~14 fps on-screen / ~16 fps off-screen\nArtifacts / freeze / crash = inestable.\n\nResultado guardado en historial." \
             15 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')

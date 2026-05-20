@@ -2,6 +2,15 @@
 
 ## v2.9 — 2026-05-20
 
+**Fix: ValidateGPUUndervolt — EmulationStation stop/start required sudo:**
+- `systemctl stop/start emulationstation` failed with "Interactive authentication required" when called without sudo
+- Fixed: both calls now use `echo ark | sudo -S systemctl ...`
+- Without this fix, ES kept running during the on-screen terrain test, causing display overlap
+
+**Fix: baseline fps updated — on-screen vs off-screen:**
+- Dialog now shows correct baselines: `~14 fps on-screen / ~16 fps off-screen`
+- Previous `~17 fps` was measured off-screen before on-screen integration
+
 **Feat: GPU Undervolt Validation now uses on-screen terrain test:**
 - `ValidateGPUUndervolt` replaced off-screen glmark2 with on-screen terrain via glmark2 2021.02 legacy binary
 - On-screen rendering detects visual artifacts, color corruption, and GPU instability that off-screen cannot catch
