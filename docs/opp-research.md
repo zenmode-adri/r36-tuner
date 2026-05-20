@@ -99,10 +99,52 @@ Key scores (off-screen, ES stopped):
 
 ---
 
-## OC Experiment
+## CPU OC — 1608 MHz (confirmed working)
 
-- 1608 MHz OPP added to `/cpu0-opp-table` → kernel ignores it. Clock driver hard cap at 1512 MHz. Not fixable without BSP kernel recompile.
-- GPU OC not tested. `vdd_logic` max=1150 mV leaves ~50 mV above L0 520 MHz (1150 mV) — no headroom.
+**1608 MHz is achievable via DTB only — no kernel recompile needed.**
+
+Earlier testing showed the kernel ignoring the 1608 MHz OPP. Root cause was `rockchip,avs-scale=4` in `/cpu0-opp-table`, not the clock driver.
+
+### Mechanism: AVS (Adaptive Voltage Scaling)
+
+`rockchip,avs=1` + `rockchip,avs-scale=4` in the DTB causes the kernel to call
+`rockchip_adjust_opp_table(dev, scale_to_rate(4))` = `rockchip_adjust_opp_table(dev, 1512 MHz)`,
+which **actively removes all OPPs above 1512 MHz** from the table at boot.
+
+Fix: set `rockchip,avs-scale=0`. The condition `opp_scale(0) < avs_scale(0)` = FALSE → no OPPs removed.
+
+The PX30 clock driver (`drivers/clk/rockchip/clk-px30.c`) already contains 1608 MHz in both
+`px30_cpuclk_rates` and `px30_pll_rates` (RK3326 = PX30 same SoC, same driver).
+
+### DTB changes required
+
+1. Add OPP node to `/cpu0-opp-table`:
+   ```
+   opp-1608000000 { opp-hz = /bits/ 64 <1608000000>; opp-microvolt-L2 = <1350000 1350000 1350000>; }
+   ```
+2. Change `rockchip,avs-scale` from `4` to `0` in `/cpu0-opp-table`.
+
+Voltage used: 1350 mV (same as 1512 MHz stock L2 — conservative). Could probably be undervolted further.
+
+### Benchmark results — ALU (LCG C, 10s)
+
+| MHz  | Mops | vs 1008 MHz |
+|------|------|-------------|
+| 1008 | 1500 | 100%        |
+| 1200 | 1730 | +15%        |
+| 1248 | 1780 | +19%        |
+| 1296 | 1920 | +28%        |
+| 1512 | 1870 | +25%        |
+| 1608 | 1900 | +27%        |
+
+**Sweet spot: 1512 MHz @ 1175 mV (undervolted).** 1608 MHz gives only +1.6% over 1512 MHz at stock voltage.
+GPU benchmark (terrain) is identical at all CPU frequencies — GPU-limited, not CPU-limited.
+
+### GPU OC
+
+Not tested. `vdd_logic` (shared rail) has an absolute max of 1150 mV — the L0 520 MHz OPP
+already uses 1150 mV, leaving zero headroom to add a higher-frequency OPP at a safe voltage.
+Possible only if GPU can clock higher at current voltage (1100 mV L2), which is unknown.
 
 ---
 

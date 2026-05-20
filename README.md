@@ -9,6 +9,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - GPU max frequency selection
 - DMC / RAM max frequency selection
 - **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Offsets from -100 mV to +50 mV. Reboot required.
+- **CPU OC to 1608 MHz** — unlocks 1608 MHz by patching `rockchip,avs-scale` in the DTB (no kernel recompile needed). The PX30/RK3326 clock driver already contains 1608 MHz; it was being suppressed by the AVS mechanism at runtime.
 - **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
@@ -85,6 +86,25 @@ Rail: `vdd_logic` (shared with GPU and SoC logic) · Node: `/dmc-opp-table` · *
 > **RAM OC is not possible via DTB.** DMC frequency is owned by ATF (ARM Trusted Firmware, version 0x105) via SMC calls — the kernel devfreq interface has no control over it.
 
 For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
+
+## CPU OC — 1608 MHz
+
+The RK3326 clock driver already contains 1608 MHz in `px30_cpuclk_rates` and `px30_pll_rates`. It was suppressed at runtime by `rockchip,avs-scale=4` in the DTB, which caused the kernel to actively strip OPPs above 1512 MHz from the table during boot.
+
+**Fix (DTB only, no kernel recompile):**
+1. Add `opp-1608000000` node to `/cpu0-opp-table` with desired voltage.
+2. Set `rockchip,avs-scale` from `4` to `0` — disables the AVS OPP stripping.
+
+**Benchmark results (ALU, LCG C, 10s):**
+
+| MHz  | Mops | vs 1008 MHz |
+|------|------|-------------|
+| 1008 | 1500 | 100%        |
+| 1296 | 1920 | +28%        |
+| 1512 | 1870 | +25%        |
+| 1608 | 1900 | +27%        |
+
+Practical gain of 1608 over 1512 MHz: **+1.6%**. The sweet spot remains **1512 MHz @ 1175 mV** (undervolted). GPU-bound workloads show no difference at any CPU frequency.
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
 

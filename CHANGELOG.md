@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.9 — 2026-05-20 (docs)
+
+**Discovery: CPU OC 1608 MHz works via DTB — no kernel recompile needed:**
+- Root cause of previous failure identified: `rockchip,avs-scale=4` in `/cpu0-opp-table` caused the kernel to call `rockchip_adjust_opp_table(dev, 1512 MHz)` at boot, actively stripping all OPPs above 1512 MHz
+- Fix: set `rockchip,avs-scale=0` + add `opp-1608000000` node — clock driver already had 1608 MHz in `px30_cpuclk_rates`/`px30_pll_rates`
+- Benchmark: 1608 MHz = +27% vs 1008 MHz, but only +1.6% over 1512 MHz — sweet spot remains 1512 MHz undervolted
+- Updated `docs/opp-research.md` and `README.md` with correct findings (previous docs incorrectly stated "not fixable without BSP kernel recompile")
+
 ## v2.9 — 2026-05-20 (updated)
 
 **Feat: CPU benchmark replaced with compiled C ALU benchmark:**
