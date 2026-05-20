@@ -106,6 +106,32 @@ Key scores (off-screen, ES stopped):
 
 ---
 
+## RAM / DMC
+
+### DMC OPP table — all bins (mV)
+
+Node: `/dmc-opp-table` · Rail: `vdd_logic` (shared with GPU and SoC logic)
+
+| MHz | L0   | L1   | **L2** | L3   |
+|-----|------|------|--------|------|
+| 528 | 975  | 975  | **950**  | 950  |
+| 666 | 1050 | 1000 | **975**  | 950  |
+| 786 | 1100 | 1050 | **1025** | 1000 |
+
+### DMC Undervolt — not worth it
+
+The DMC shares `vdd_logic` with the GPU. The PMIC sets the rail voltage to the maximum demanded by any consumer at a given moment. When the GPU runs at 520 MHz (demanding 1087.5 mV with our patch), the DMC receives that same voltage regardless of its own OPP. Patching DMC L2 voltages lower would only save power in the narrow window where GPU is at low freq and DMC is at high freq — marginal benefit. Risk: DDR memory instability → random crashes and data corruption.
+
+### RAM OC — not possible via DTB
+
+DMC frequency is controlled by **ATF (ARM Trusted Firmware)**, not the kernel. Confirmed from dmesg:
+```
+rockchip-dmc dmc: current ATF version 0x105
+```
+The kernel devfreq interface for DMC has no accessible `available_frequencies` — ATF owns DDR frequency transitions via SMC calls. Overclocking RAM would require modifying the ATF binary in the bootloader, for which dArkOSRE provides no source. Not feasible.
+
+---
+
 ## DTB File Info
 
 ```
