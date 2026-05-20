@@ -1161,11 +1161,14 @@ MonitorMenu() {
 
 BenchmarkCPU() {
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "sha256 via openssl...\nPlease wait ~60s" 5 40 > "$CURR_TTY"
+        --infobox "sha256 via openssl...\nPlease wait ~35s" 5 40 > "$CURR_TTY"
+
+    local GOV_PREV; GOV_PREV=$(GetGOV)
+    echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     local SSL_KBS=0 SSL_DISP="N/A"
     if command -v openssl >/dev/null 2>&1; then
-        local raw; raw=$(openssl speed -seconds 60 sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
+        local raw; raw=$(openssl speed -seconds 5 sha256 2>&1 | grep -i "sha256" | grep -v "^Doing" | tail -1 | awk '{print $NF}')
         if [ -n "$raw" ]; then
             SSL_KBS=$(echo "$raw" | awk '{printf "%d", $1}')
             SSL_DISP="$(( SSL_KBS / 1024 )) MB/s"
@@ -1197,6 +1200,8 @@ BenchmarkCPU() {
     printf "%s | %s MHz | %s mV | %s | %s°C | sha256: %s\n" \
         "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SSL_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
+
+    echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
         --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nsha256 : ${SSL_DISP}\n${REL_DISP}" \
