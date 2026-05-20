@@ -1,12 +1,12 @@
 #!/bin/bash
-# R36 Tuner v2.7 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v2.8 — CPU / GPU / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.7"
+VERSION="2.8"
 CURR_TTY="/dev/tty1"
-BACKTITLE="R36 Tuner v${VERSION} — ELITE HYBRID"
+BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
 BOOT_SCRIPT="/usr/local/bin/r36-tuner-apply.sh"
 SVC_FILE="/etc/systemd/system/r36-tuner.service"
@@ -18,7 +18,6 @@ DTB_BOOTING="/boot/.r36_dtb_patch_booting"
 DTB_RESTORED="/boot/.r36_dtb_restored"
 DTB_SAFETY_SCRIPT="/usr/local/bin/r36-dtb-safety.sh"
 DTB_SAFETY_SVC="/etc/systemd/system/r36-dtb-safety.service"
-OC_PENDING="/boot/.r36_oc_pending"
 
 export TERM=linux
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -135,33 +134,6 @@ GetDTBStatus() {
 
 GetCPUAvail()   { cat "$CPU_POLICY/scaling_available_frequencies" 2>/dev/null | tr ' ' '\n' | sort -rn | grep -v '^$'; }
 GetGPUAvail()   { [ -z "$GPU_DEVFREQ" ] && return; cat "$GPU_DEVFREQ/available_frequencies" 2>/dev/null | tr ' ' '\n' | sort -rn | grep -v '^$'; }
-GetDMCAvail()   { [ -z "$DMC_DEVFREQ" ] && return; cat "$DMC_DEVFREQ/available_frequencies" 2>/dev/null | tr ' ' '\n' | sort -rn | grep -v '^$'; }
-
-# ── Voltage Write ────────────────────────────────────────────────────────────
-# Returns: 0=ok 1=range 2=read-only 3=not found 4=OPP reverted
-
-ApplyVolt() {
-    local dir="$1" mv="$2"
-    [ -z "$dir" ] && return 3
-    if ! [[ "$mv" =~ ^[0-9]+$ ]]; then return 1; fi
-    local reg_min_raw; reg_min_raw=$(cat "$dir/min_microvolts" 2>/dev/null || echo 0)
-    local reg_max_raw; reg_max_raw=$(cat "$dir/max_microvolts" 2>/dev/null || echo 0)
-    if [ "$reg_min_raw" -gt 0 ] && [ "$reg_max_raw" -gt 0 ]; then
-        local reg_min=$(( reg_min_raw / 1000 ))
-        local reg_max=$(( reg_max_raw / 1000 ))
-        [ "$mv" -lt "$reg_min" ] || [ "$mv" -gt "$reg_max" ] && return 1
-    fi
-    [ ! -w "$dir/microvolts" ] && return 2
-    local uv=$(( mv * 1000 ))
-    local cur_min; cur_min=$(cat "$dir/min_microvolts" 2>/dev/null || echo 0)
-    local cur_max; cur_max=$(cat "$dir/max_microvolts" 2>/dev/null || echo 9999999)
-    [ "$uv" -lt "$cur_min" ] && echo "$uv" > "$dir/min_microvolts" 2>/dev/null
-    [ "$uv" -gt "$cur_max" ] && echo "$uv" > "$dir/max_microvolts" 2>/dev/null
-    echo "$uv" > "$dir/microvolts" 2>/dev/null
-    sleep 0.1
-    local actual; actual=$(cat "$dir/microvolts" 2>/dev/null || echo 0)
-    [ "$actual" -eq "$uv" ] && return 0 || return 4
-}
 
 # ── Config & Boot Service ─────────────────────────────────────────────────────
 
@@ -363,80 +335,6 @@ TeardownDTBSafetyService() {
     rm -f "/etc/systemd/system/r36-dtb-confirm.service" "/usr/local/bin/r36-dtb-confirm.sh"
     rm -f "$DTB_PENDING" "$DTB_BOOTING" "$DTB_RESTORED"
     systemctl daemon-reload
-}
-
-# ── DTB OC Experiment ─────────────────────────────────────────────────────────
-
-DTBOCApply() {
-    local DTB="$1" OPP_BASE="$2"
-    local OC_NODE="${OPP_BASE}/opp-1608000000"
-    local REF_DTB; [ -f "${DTB}.bak" ] && REF_DTB="${DTB}.bak" || REF_DTB="$DTB"
-
-    dialog --backtitle "$BACKTITLE" --title "[ OC EXPERIMENT — 1608 MHz ]" \
-        --yesno "Añadir OPP 1608 MHz al DTB.\n\nVoltaje: igual que stock 1512 MHz (1300 mV L2).\nTras reboot, el script detecta si el kernel\naceptó la frecuencia o la ignoró.\n\n[!] Safety service activo. Si no arranca:\nrecuperar backup manual desde PC." \
-        14 58 > "$CURR_TTY"
-    [ $? -ne 0 ] && return
-
-    if [ ! -f "${DTB}.bak" ]; then
-        cp "$DTB" "${DTB}.bak" || {
-            dialog --msgbox "Backup fallido. Abortando." 5 40 > "$CURR_TTY"
-            return
-        }
-        REF_DTB="${DTB}.bak"
-    fi
-
-    dialog --infobox "Creando nodo OPP 1608 MHz..." 4 40 > "$CURR_TTY"
-
-    # Find reference node (1512 MHz, from backup = stock voltages)
-    local REF_NODE_PATH=""
-    for fmt in "opp-1512000000" "opp@1512000000"; do
-        fdtget -t u "$REF_DTB" "${OPP_BASE}/${fmt}" opp-microvolt >/dev/null 2>&1 \
-            && REF_NODE_PATH="${OPP_BASE}/${fmt}" && break
-        fdtget -t u "$REF_DTB" "${OPP_BASE}/${fmt}" opp-microvolt-L2 >/dev/null 2>&1 \
-            && REF_NODE_PATH="${OPP_BASE}/${fmt}" && break
-    done
-
-    fdtput -c "$DTB" "$OC_NODE" 2>/dev/null
-
-    # opp-hz as 64-bit: high=0, low=1608000000
-    fdtput -t u "$DTB" "$OC_NODE" opp-hz 0 1608000000 2>/dev/null
-
-    # Copy all voltage bin props from reference; fallback to safe defaults
-    local FAIL=0
-    for prop in opp-microvolt opp-microvolt-L0 opp-microvolt-L1 opp-microvolt-L2 opp-microvolt-L3; do
-        local vals=""
-        [ -n "$REF_NODE_PATH" ] && vals=$(fdtget -t u "$REF_DTB" "$REF_NODE_PATH" "$prop" 2>/dev/null)
-        if [ -z "$vals" ]; then
-            case "$prop" in
-                *-L3) vals="1250000 1250000 1250000" ;;
-                *-L2) vals="1300000 1300000 1300000" ;;
-                *)    vals="1350000 1350000 1350000" ;;
-            esac
-        fi
-        fdtput -t u "$DTB" "$OC_NODE" "$prop" $vals 2>/dev/null || FAIL=1
-    done
-
-    # Copy clock-latency-ns
-    if [ -n "$REF_NODE_PATH" ]; then
-        local clk_lat; clk_lat=$(fdtget -t u "$REF_DTB" "$REF_NODE_PATH" clock-latency-ns 2>/dev/null)
-        [ -n "$clk_lat" ] && fdtput -t u "$DTB" "$OC_NODE" clock-latency-ns $clk_lat 2>/dev/null
-    fi
-
-    # Verify node has voltage
-    local check; check=$(fdtget -t u "$DTB" "$OC_NODE" opp-microvolt-L2 2>/dev/null \
-                       || fdtget -t u "$DTB" "$OC_NODE" opp-microvolt 2>/dev/null)
-    if [ -z "$check" ] || [ "$FAIL" -eq 1 ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ OC ]" \
-            --msgbox "Error al crear nodo OPP. Restaurando backup..." 6 50 > "$CURR_TTY"
-        cp "${DTB}.bak" "$DTB"
-        return
-    fi
-
-    touch "$OC_PENDING"
-    SetupDTBSafetyService
-
-    dialog --backtitle "$BACKTITLE" --title "✓ OPP 1608 MHz añadido" \
-        --yesno "Nodo creado en DTB. Safety service activo.\n\nAl arrancar, el script comprobará si\n1608 MHz aparece en scaling_available_frequencies\ny mostrará el resultado.\n\n¿Reiniciar ahora?" 12 52 > "$CURR_TTY" && reboot
 }
 
 # ── DTB GPU Undervolt ────────────────────────────────────────────────────────
@@ -833,110 +731,7 @@ GPUTuningMenu() {
         --msgbox "GPU max  →  ${MHZ} MHz\nGovernor : simple_ondemand\nTemp     : $(GetTempC)°C" 7 52 > "$CURR_TTY"
 }
 
-# ── DMC / RAM Tuning ──────────────────────────────────────────────────────────
-
-DMCTuningMenu() {
-    if [ -z "$DMC_DEVFREQ" ]; then
-        dialog --backtitle "$BACKTITLE" --title "DMC / RAM Tuning" \
-            --msgbox "DMC devfreq not found.\nSearched: *dmc*  *ff600000*" 7 52 > "$CURR_TTY"
-        return
-    fi
-
-    local AVAIL; AVAIL=$(GetDMCAvail)
-    if [ -z "$AVAIL" ]; then
-        dialog --backtitle "$BACKTITLE" --title "DMC / RAM Tuning" \
-            --msgbox "Cannot read $DMC_DEVFREQ/available_frequencies" 6 58 > "$CURR_TTY"
-        return
-    fi
-
-    local CUR_MAX; CUR_MAX=$(cat "$DMC_DEVFREQ/max_freq" 2>/dev/null)
-    local CHOICES=()
-    while IFS= read -r hz; do
-        local mhz=$((hz/1000000))
-        local m="  "; [ "$hz" = "$CUR_MAX" ] && m="★ "
-        local note=""; [ $mhz -ge 786 ] && note="  [DTB]"
-        CHOICES+=("$hz" "${m}${mhz} MHz${note}")
-    done <<< "$AVAIL"
-
-    local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 8 )); [ $H -gt 20 ] && H=20
-
-    local SEL
-    SEL=$(dialog --backtitle "$BACKTITLE" \
-                 --title "[ DMC / RAM MAX FREQUENCY ]" \
-                 --default-item "$CUR_MAX" \
-                 --menu "★ = current  |  [DTB] = needs DTB patch for 786MHz OPP" \
-                 $H 62 $COUNT \
-                 "${CHOICES[@]}" \
-                 2>&1 > "$CURR_TTY")
-    [ -z "$SEL" ] && return
-
-    echo "$SEL" > "$DMC_DEVFREQ/max_freq" 2>/dev/null
-    local MHZ=$(( SEL / 1000000 ))
-    local EXTRA=""
-    [ $MHZ -ge 786 ] && EXTRA="\n\n[!] 786 MHz OPP needs DTB patch.\nApplied live — may revert on reboot."
-
-    dialog --backtitle "$BACKTITLE" --title "✓ DMC Updated" \
-        --msgbox "DMC max  →  ${MHZ} MHz${EXTRA}" 9 55 > "$CURR_TTY"
-}
-
-# ── Voltage Tuning ────────────────────────────────────────────────────────────
-
-SetVoltForReg() {
-    local LABEL="$1" DIR="$2" DANGER="$3"
-    if [ -z "$DIR" ]; then
-        dialog --backtitle "$BACKTITLE" --title "Voltage — $LABEL" \
-            --msgbox "$LABEL not found in /sys/class/regulator/\n\nKernel may not expose it." 7 55 > "$CURR_TTY"
-        return
-    fi
-
-    local CUR_MV; CUR_MV=$(GetRegVoltMV "$DIR")
-    local REG_MIN_RAW; REG_MIN_RAW=$(cat "$DIR/min_microvolts" 2>/dev/null || echo 0)
-    local REG_MAX_RAW; REG_MAX_RAW=$(cat "$DIR/max_microvolts" 2>/dev/null || echo 0)
-    local REG_MIN=$(( REG_MIN_RAW / 1000 ))
-    local REG_MAX=$(( REG_MAX_RAW / 1000 ))
-    # fallback: if sysfs doesn't expose valid range, use current ±200mV
-    if [ "$REG_MIN" -eq 0 ] || [ "$REG_MAX" -eq 0 ] || [ "$REG_MAX" -le "$REG_MIN" ]; then
-        local BASE; BASE=$([ "$CUR_MV" != "N/A" ] && echo "$CUR_MV" || echo 1100)
-        REG_MIN=$(( BASE - 200 ))
-        REG_MAX=$(( BASE + 200 ))
-    fi
-    local REG_MIN_R=$(( (REG_MIN / 25) * 25 ))
-    local REG_MAX_R=$(( (REG_MAX / 25) * 25 ))
-    local DANGER_MSG=""
-    [ "$DANGER" = "1" ] && DANGER_MSG="\n[!] vcc_ddr: wrong voltage = data corruption / crash."
-
-    local CHOICES=()
-    for v in $(seq $REG_MAX_R -25 $REG_MIN_R); do
-        local m="  "; [ "$v" = "$CUR_MV" ] && m="★ "
-        CHOICES+=("$v" "${m}${v} mV")
-    done
-
-    local SEL
-    SEL=$(dialog --backtitle "$BACKTITLE" \
-                 --title "[ VOLTAGE — $LABEL ]" \
-                 --default-item "$CUR_MV" \
-                 --menu "Current: ${CUR_MV} mV  |  Range: ${REG_MIN_R}–${REG_MAX_R} mV  |  Step: 25 mV${DANGER_MSG}" \
-                 20 55 15 \
-                 "${CHOICES[@]}" \
-                 2>&1 > "$CURR_TTY")
-    [ -z "$SEL" ] && return
-
-    ApplyVolt "$DIR" "$SEL"
-    local RET=$?
-    local ACTUAL_MV; ACTUAL_MV=$(GetRegVoltMV "$DIR")
-    local MSG
-    case $RET in
-        0) MSG="Applied: ${SEL} mV  (read-back: ${ACTUAL_MV} mV)\n\nSave Profile → applies at boot.\nDTB patch = truly permanent." ;;
-        4) MSG="Write sent but OPP reverted it.\nRead-back: ${ACTUAL_MV} mV\n\nOPP framework owns this regulator during\ncpufreq transitions. DTB patch required\nfor a permanent undervolt." ;;
-        2) MSG="Write blocked — regulator is read-only.\n\nDTB patch required for undervolt." ;;
-        1) MSG="Value ${SEL} mV out of range (${REG_MIN_R}–${REG_MAX_R} mV)." ;;
-        3) MSG="Regulator directory not found." ;;
-    esac
-
-    dialog --backtitle "$BACKTITLE" --title "[ VOLTAGE — $LABEL ]" \
-        --msgbox "$MSG" 11 58 > "$CURR_TTY"
-}
+# ── Voltage Info ─────────────────────────────────────────────────────────────
 
 VoltageMenu() {
     local ARM_MV; ARM_MV=$(GetRegVoltMV "$VDD_ARM")
@@ -1452,40 +1247,6 @@ InstallGlmark2() {
     command -v glmark2-es2-drm >/dev/null 2>&1
 }
 
-GPUInfo() {
-    local INFO=""
-    # DRM
-    if ls /dev/dri/card* >/dev/null 2>&1; then
-        INFO+="DRM: $(ls /dev/dri/ | tr '\n' ' ')\n"
-    else
-        INFO+="DRM: no /dev/dri\n"
-    fi
-    # fbdev
-    [ -e /dev/fb0 ] && INFO+="fbdev: /dev/fb0 OK\n" || INFO+="fbdev: no /dev/fb0\n"
-    local FBRES
-    FBRES=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null | tr ',' 'x')
-    [ -n "$FBRES" ] && INFO+="fb0 res: ${FBRES}\n"
-    # EGL/Mali libs
-    local LIBS
-    LIBS=$(find /usr/lib /lib -maxdepth 3 \( -name "libEGL*" -o -name "libmali*" -o -name "libGLES*" \) 2>/dev/null | sort | tr '\n' '\n')
-    [ -n "$LIBS" ] && INFO+="Libs:\n${LIBS}\n" || INFO+="Libs: ninguna encontrada\n"
-    # Mali device
-    [ -e /dev/mali0 ] && INFO+="Mali dev: /dev/mali0\n" || INFO+="Mali dev: no /dev/mali0\n"
-    # SDL2 video driver
-    local SDL_DRV
-    SDL_DRV=$(strings /usr/lib/aarch64-linux-gnu/libSDL2*.so* 2>/dev/null | grep -o 'kmsdrm\|wayland\|x11\|fbdev' | sort -u | tr '\n' ' ')
-    [ -n "$SDL_DRV" ] && INFO+="SDL2 drivers: ${SDL_DRV}\n"
-    # GPU-capable binaries already on device
-    local BINS=""
-    for b in glmark2 glmark2-es2 glmark2-es2-drm glmark2-es2-wayland kmscube es2gears retroarch ppsspp PPSSPPSDL; do
-        local P; P=$(command -v "$b" 2>/dev/null || find /opt /usr/bin /usr/local/bin -name "$b" -maxdepth 4 2>/dev/null | head -1)
-        [ -n "$P" ] && BINS+="$b: $P\n"
-    done
-    [ -n "$BINS" ] && INFO+="GPU bins:\n${BINS}" || INFO+="GPU bins: ninguno encontrado\n"
-    dialog --backtitle "$BACKTITLE" --title "[ GPU INFO ]" \
-        --msgbox "$(printf '%b' "$INFO")" 20 70 > "$CURR_TTY"
-}
-
 BenchmarkGPU() {
     if ! command -v glmark2-es2-drm >/dev/null 2>&1; then
         dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
@@ -1868,21 +1629,6 @@ if [ -f "$DTB_RESTORED" ]; then
     dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — AUTO-RESTORED ]" \
         --msgbox "Previous DTB undervolt caused instability.\nOriginal DTB was restored automatically.\n\nSafety service has been disabled.\nTry a smaller voltage offset next time." \
         10 58 > "$CURR_TTY"
-fi
-
-# Check OC experiment result
-if [ -f "$OC_PENDING" ]; then
-    rm -f "$OC_PENDING"
-    AVAIL=$(cat "$CPU_POLICY/scaling_available_frequencies" 2>/dev/null)
-    if echo "$AVAIL" | grep -qw "1608000"; then
-        dialog --backtitle "$BACKTITLE" --title "[ OC — 1608 MHz ACEPTADO ]" \
-            --msgbox "1608 MHz aparece en scaling_available_frequencies.\n\nEl clock driver del kernel acepta esta frecuencia.\nPuedes establecerlo como max en CPU Tuning.\n\n[!] Estabilidad no garantizada. Monitoriza temp.\n    Voltaje: stock 1512 MHz (1300 mV en bin L2)." \
-            12 64 > "$CURR_TTY"
-    else
-        dialog --backtitle "$BACKTITLE" --title "[ OC — 1608 MHz IGNORADO ]" \
-            --msgbox "1608 MHz NO aparece en scaling_available_frequencies.\n\nEl clock driver del kernel tiene un tope en 1512 MHz.\nNo es posible superar 1512 MHz sin recompilar\nel kernel de dArkOSRE.\n\nEl nodo OPP fue añadido al DTB correctamente\npero el kernel lo rechazó en tiempo de boot." \
-            12 64 > "$CURR_TTY"
-    fi
 fi
 
 # Mostrar resultado de GPU bench si hay uno pendiente
