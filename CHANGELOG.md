@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.9 — 2026-05-20
+
+**Feat: GPU Undervolt Validation now uses on-screen terrain test:**
+- `ValidateGPUUndervolt` replaced off-screen glmark2 with on-screen terrain via glmark2 2021.02 legacy binary
+- On-screen rendering detects visual artifacts, color corruption, and GPU instability that off-screen cannot catch
+- glmark2 2021.02 (arm64, patched for Mali GBM) embedded as base64 (`__GLMARK2_LEGACY_START/END__`) — ~960KB stripped
+- New `InstallGlmark2Legacy()` extracts and caches binary at `/tmp/glmark2-es2-drm-legacy` on first use
+- Glmark2 data reuses existing `/usr/share/glmark2/` (already installed by bundled deb)
+- Result screen shows fps, baseline (stock ~17fps), and STABLE/UNSTABLE verdict
+- Requires EmulationStation stop/start (same as before)
+
 ## v2.8 — 2026-05-20
 
 **Menu cleanup — removed stale/dead entries:**
