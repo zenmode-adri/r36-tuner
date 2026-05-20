@@ -25,13 +25,13 @@ Rail: `vdd_arm` (DCDC_REG2) · DTB node format: `opp-<hz>` · Values: `[min, typ
 
 | MHz   | opp-microvolt | L0     | L1     | **L2** (active) | L3     |
 |-------|---------------|--------|--------|-----------------|--------|
-| 1008  | 1075 mV       | 1175   | 1125   | **1075**        | 1050   |
-| 1200  | 1200 mV       | 1300   | 1275   | **1200**        | 1200   |
-| 1248  | 1250 mV       | 1350   | 1300   | **1225**        | 1225   |
-| 1296  | 1250 mV       | 1350   | 1350   | **1250**        | 1250   |
-| 1512  | 1250 mV       | 1350   | 1350   | **1250**        | 1250   |
+| 1008  | 1175 mV       | 1175   | 1125   | **1125**        | 1050   |
+| 1200  | 1300 mV       | 1300   | 1275   | **1250**        | 1200   |
+| 1248  | 1350 mV       | 1350   | 1300   | **1275**        | 1225   |
+| 1296  | 1350 mV       | 1350   | 1350   | **1300**        | 1250   |
+| 1512  | 1350 mV       | 1350   | 1350   | **1300**        | 1250   |
 
-> Values read from DTB on fresh dArkOSRE install (2026-05-20).  
+> Values from official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB.  
 > `max` col in [min, typ, max] tuple is the voltage ceiling; kernel uses `min`/`typ`.  
 > Constraint: vdd_arm min=950 mV, max=1350 mV.
 
@@ -39,11 +39,11 @@ Rail: `vdd_arm` (DCDC_REG2) · DTB node format: `opp-<hz>` · Values: `[min, typ
 
 | Offset  | L2 @ 1296/1512 MHz | Result                         |
 |---------|--------------------|--------------------------------|
-| 0 mV    | 1250 mV (stock)    | Stable (baseline)              |
-| −75 mV  | 1175 mV            | ✅ Stable                      |
-| −125 mV | 1125 mV            | ✅ Stable — confirmed long-term |
-| −137.5 mV | 1112.5 mV        | ❌ Freeze at "starting ui"     |
-| −150 mV | 1100 mV            | ❌ Black screen (kernel crash) |
+| 0 mV    | 1300 mV (stock)    | Stable (baseline)              |
+| −25 mV  | 1275 mV            | ✅ Stable                      |
+| −125 mV | 1175 mV            | ✅ Stable — confirmed long-term |
+| −137.5 mV | 1162.5 mV        | ❌ Freeze at "starting ui"     |
+| −150 mV | 1150 mV            | ❌ Black screen (kernel crash) |
 
 **Confirmed stable limit: −125 mV → 1125 mV** at 1296/1512 MHz.
 

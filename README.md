@@ -44,30 +44,30 @@ Tested results on L2 bin (our test unit — your bin may differ, check dmesg):
 
 | Component | Stock L2 @ max freq | Stable limit | Result |
 |-----------|---------------------|--------------|--------|
-| CPU (vdd_arm) | 1250 mV @ 1512 MHz | **−125 mV → 1125 mV** | ✅ Long-term stable |
+| CPU (vdd_arm) | 1300 mV @ 1512 MHz | **−125 mV → 1175 mV** | ✅ Long-term stable |
 | GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic is shared with SoC logic — tight margin) |
 
 ### CPU voltage table — all bins (mV)
 
-Rail: `vdd_arm` · Node: `/cpu0-opp-table` · Values: operating voltage (min of [min, typ, max]) · **Bold = tested unit (L2)**
+Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · Rail: `vdd_arm` · **Bold = our tested bin (L2)**
 
 | MHz  | default | L0   | L1   | **L2** | L3   |
 |------|---------|------|------|--------|------|
-| 1008 | 1075    | 1175 | 1125 | **1075** | 1050 |
-| 1200 | 1200    | 1300 | 1275 | **1200** | 1200 |
-| 1248 | 1250    | 1350 | 1300 | **1225** | 1225 |
-| 1296 | 1250    | 1350 | 1350 | **1250** | 1250 |
-| 1512 | 1250    | 1350 | 1350 | **1250** | 1250 |
+| 1008 | 1175    | 1175 | 1125 | **1125** | 1050 |
+| 1200 | 1300    | 1300 | 1275 | **1250** | 1200 |
+| 1248 | 1350    | 1350 | 1300 | **1275** | 1225 |
+| 1296 | 1350    | 1350 | 1350 | **1300** | 1250 |
+| 1512 | 1350    | 1350 | 1350 | **1300** | 1250 |
 
 ### GPU voltage table — all bins (mV)
 
-Rail: `vdd_logic` (shared with SoC logic) · Node: `/gpu-opp-table` · Values: single u32 · **Bold = tested unit (L2)**
+Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · Rail: `vdd_logic` (shared with SoC logic) · **Bold = our tested bin (L2)**
 
-| MHz | default | L0   | L1   | **L2** (stock) | L3   |
-|-----|---------|------|------|----------------|------|
-| 400 | 1050    | 1050 | 1025 | **975**        | 950  |
-| 480 | 1125    | 1125 | 1100 | **1050**       | 1000 |
-| 520 | 1150    | 1150 | 1150 | **1100**       | 1050 |
+| MHz | default | L0   | L1   | **L2** | L3   |
+|-----|---------|------|------|--------|------|
+| 400 | 1050    | 1050 | 1025 | **975**  | 950  |
+| 480 | 1125    | 1125 | 1100 | **1050** | 1000 |
+| 520 | 1150    | 1150 | 1150 | **1100** | 1050 |
 
 For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
 
