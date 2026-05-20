@@ -7,9 +7,20 @@
 - On-screen rendering detects visual artifacts, color corruption, and GPU instability that off-screen cannot catch
 - glmark2 2021.02 (arm64, patched for Mali GBM) embedded as base64 (`__GLMARK2_LEGACY_START/END__`) — ~960KB stripped
 - New `InstallGlmark2Legacy()` extracts and caches binary at `/tmp/glmark2-es2-drm-legacy` on first use
-- Glmark2 data reuses existing `/usr/share/glmark2/` (already installed by bundled deb)
 - Result screen shows fps, baseline (stock ~17fps), and STABLE/UNSTABLE verdict
 - Requires EmulationStation stop/start (same as before)
+
+**Fix: glmark2 2021.02 shader compatibility with glmark2-data 2023.01:**
+- `glmark2-data 2023.01` shaders use `MEDIUMP_OR_DEFAULT`/`HIGHP_OR_DEFAULT` macros undefined in the 2021.02 binary → Mali compiler error, 0 fps
+- `InstallGlmark2Legacy()` creates `/tmp/glmark2data/` with patched shader copies and symlinks to models/textures
+- Terrain on-screen confirmed: **14 fps** at -12.5 mV GPU undervolt (stock ~17 fps)
+
+**bin/glmark2-es2-drm-legacy — pre-compiled binary added to repo:**
+- glmark2 2021.02 cross-compiled for arm64 (AArch64, Cortex-A35), stripped — 985752 bytes
+- Target: R36S / RK3326 / dArkOSRE (Mali-G31 GBM, legacy KMS, OpenGL ES 3.2)
+- Toolchain: Ubuntu 24.04, aarch64-linux-gnu-g++
+- Patches: `#include <utility>` (GCC 13); GBM format from EGL `NATIVE_VISUAL_ID`; `flip()` via `drmModeSetCrtc`
+- BuildID: `8afd801061043c089ef1881c7e61974f71535d24`
 
 ## v2.8 — 2026-05-20
 
