@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.2 — 2026-05-21
+
+**Feat: GPU OC 600 MHz — integrated into DTB menu (`DTBGPUOC()`):**
+- New menu item "GPU OC 600 MHz" in DTB Undervolt submenu, after CPU OC entry
+- Menu item shows `[ACTIVE]` suffix if 600 MHz is already in GPU `available_frequencies`
+- `DTBGPUOC()`: adds `opp-600000000` to `/gpu-opp-table` — no `rockchip,avs-scale` needed (GPU has none)
+- `opp-hz`: 0 600000000 (64-bit, gpll/2 = 600 MHz exactly)
+- Voltage selector: 1150 / 1137.5 / 1125 / 1112.5 mV (1150 mV recommended — PMIC vdd_logic max)
+- Writes both `opp-microvolt-L2` (binned) and generic `opp-microvolt` for compatibility
+- Same safety net: backup preserved, safety service, reboot prompt
+- State detection: ACTIVE / OPP in DTB pending reboot / not patched
+
 ## v3.1 — 2026-05-21
 
 **Discovery: GPU OC 600 MHz — confirmed stable via DTB only:**

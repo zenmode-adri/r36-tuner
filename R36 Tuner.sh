@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.1"
+VERSION="3.2"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -759,14 +759,19 @@ DTBUndervoltMenu() {
     grep -q "1608000" /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies 2>/dev/null \
         && OC_STATUS=" [ACTIVE]"
 
+    local GPU_OC_STATUS=""
+    [ -n "$GPU_DEVFREQ" ] && grep -q "600000000" "$GPU_DEVFREQ/available_frequencies" 2>/dev/null \
+        && GPU_OC_STATUS=" [ACTIVE]"
+
     local ACTION
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "Permanent OPP voltage patch — reboot required" \
-        16 62 8 \
+        18 62 8 \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
         "oc"      "CPU OC 1608 MHz — unlock via DTB [EXPERIMENTAL]${OC_STATUS}" \
+        "gpuoc"   "GPU OC 600 MHz — unlock via DTB [EXPERIMENTAL]${GPU_OC_STATUS}" \
         "diag"    "Diagnose — disk vs kernel OPP" \
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
@@ -846,6 +851,12 @@ DTBUndervoltMenu() {
     # GPU undervolt — needs only DTB path, searches its own OPP table
     if [ "$ACTION" = "gpu" ]; then
         DTBGPUUndervoltMenu "$DTB"
+        return
+    fi
+
+    # GPU OC 600 MHz — needs only DTB path, searches its own OPP table
+    if [ "$ACTION" = "gpuoc" ]; then
+        DTBGPUOC "$DTB"
         return
     fi
 
@@ -1190,6 +1201,110 @@ DTBCPUOC() {
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ CPU OC ]" \
+            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+        cp "${DTB}.bak" "$DTB"
+    fi
+}
+
+# ── GPU OC 600 MHz ───────────────────────────────────────────────────────────
+
+DTBGPUOC() {
+    local DTB="$1"
+
+    # Find GPU OPP table node (same logic as DTBGPUUndervoltMenu)
+    local GPU_OPP=""
+    for candidate in /gpu-opp-table /gpu_opp_table /gpu-opp-table-0; do
+        fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && GPU_OPP="$candidate" && break
+    done
+    if [ -z "$GPU_OPP" ]; then
+        while IFS= read -r node; do
+            [ -z "$node" ] && continue
+            fdtget -l "$DTB" "/$node" 2>/dev/null | grep -qE "^opp[@-]" || continue
+            [[ "$node" == *cpu* ]] && continue
+            GPU_OPP="/$node" && break
+        done < <(fdtget -l "$DTB" / 2>/dev/null | grep -iE "gpu|opp" | grep -ivE "cpu")
+    fi
+    if [ -z "$GPU_OPP" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ GPU OC ]" \
+            --msgbox "GPU OPP table not found in DTB." 6 48 > "$CURR_TTY"
+        return
+    fi
+
+    # Detect GPU bin level from dmesg; fallback to CPU bin (same as DTBGPUUndervoltMenu)
+    local GPU_BIN_PROP="opp-microvolt"
+    local GPU_BIN; GPU_BIN=$(dmesg 2>/dev/null \
+        | grep -iE "gpu|ff400000|mali" | grep "opp-binning.*using OPP prop name" \
+        | tail -1 | grep -o 'L[0-9]')
+    [ -z "$GPU_BIN" ] && GPU_BIN=$(dmesg 2>/dev/null \
+        | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+    [ -n "$GPU_BIN" ] && GPU_BIN_PROP="opp-microvolt-${GPU_BIN}"
+
+    # Current state
+    local IS_ACTIVE=0
+    [ -n "$GPU_DEVFREQ" ] && grep -q "600000000" "$GPU_DEVFREQ/available_frequencies" 2>/dev/null \
+        && IS_ACTIVE=1
+    local HAS_NODE=0
+    fdtget "$DTB" "$GPU_OPP/opp-600000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
+
+    local STATE_MSG
+    if   [ $IS_ACTIVE -eq 1 ]; then
+        STATE_MSG="Status: 600 MHz ACTIVE (kernel loaded)\n\n"
+    elif [ $HAS_NODE -eq 1 ]; then
+        STATE_MSG="Status: OPP node in DTB but NOT active yet\n(reboot pending)\n\n"
+    else
+        STATE_MSG="Status: not active — DTB patch required\n\n"
+    fi
+
+    dialog --backtitle "$BACKTITLE" --title "[ GPU OC — 600 MHz ]" \
+        --yesno "${STATE_MSG}Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics.\n\nContinue?" 20 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    # Voltage selection
+    local VOLT_UV
+    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU OC — VOLTAGE @ 600 MHz ]" \
+        --menu "vdd_logic PMIC max = 1150 mV\n(shared with SoC logic — tight margin):" \
+        14 62 4 \
+        "1150000" "1150 mV  PMIC max for vdd_logic  (recommended)" \
+        "1137500" "1137.5 mV" \
+        "1125000" "1125 mV" \
+        "1112500" "1112.5 mV  aggressive" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$VOLT_UV" ] && return
+
+    local VOLT_MV=$(( VOLT_UV / 1000 ))
+    local VOLT_FRAC=$(( VOLT_UV % 1000 ))
+    local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
+    local BAK_NOTE; [ -f "${DTB}.bak" ] \
+        && BAK_NOTE="Backup: ${DTB}.bak (existing)" \
+        || BAK_NOTE="Backup: ${DTB}.bak (will create)"
+
+    dialog --backtitle "$BACKTITLE" --title "[ GPU OC — CONFIRM ]" \
+        --yesno "Apply GPU OC 600 MHz @ ${VOLT_STR} mV\n\nDTB changes:\n  + $GPU_OPP/opp-600000000\n    opp-hz: 0 600000000\n    ${GPU_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 58 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    # Backup (preserve true original — never overwrite)
+    if [ ! -f "${DTB}.bak" ]; then
+        cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
+    fi
+
+    dialog --infobox "Patching GPU OC DTB..." 4 35 > "$CURR_TTY"
+
+    local FAIL=0
+    fdtput -c "$DTB" "$GPU_OPP/opp-600000000" 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$GPU_OPP/opp-600000000" opp-hz 0 600000000 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$GPU_OPP/opp-600000000" "$GPU_BIN_PROP" $VOLT_UV 2>/dev/null || FAIL=1
+    # Write generic opp-microvolt too if binning is active (some kernels read both)
+    [ "$GPU_BIN_PROP" != "opp-microvolt" ] && \
+        fdtput -t u "$DTB" "$GPU_OPP/opp-600000000" opp-microvolt $VOLT_UV 2>/dev/null
+
+    if [ $FAIL -eq 0 ]; then
+        touch "$DTB_PENDING"
+        SetupDTBSafetyService
+        dialog --backtitle "$BACKTITLE" --title "✓ GPU OC Patched" \
+            --yesno "600 MHz OPP added @ ${VOLT_STR} mV\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 10 52 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+    else
+        dialog --backtitle "$BACKTITLE" --title "[ GPU OC ]" \
             --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
