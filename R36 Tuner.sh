@@ -943,24 +943,10 @@ VoltageMenu() {
     local LOGIC_MV; LOGIC_MV=$(GetRegVoltMV "$VDD_LOGIC")
     local DDR_MV; DDR_MV=$(GetRegVoltMV "$VCC_DDR")
 
-    local CHOICE
-    CHOICE=$(dialog --backtitle "$BACKTITLE" \
-                    --title "[ VOLTAGE TUNING ]" \
-                    --ok-label "Select" \
-                    --cancel-label "Back" \
-                    --menu "Step: ±25mV (RK805 PMIC)  |  [!] = high risk" \
-                    13 62 4 \
-                    1 "vdd_arm   — CPU cores     : ${ARM_MV} mV" \
-                    2 "vdd_logic — SoC / GPU     : ${LOGIC_MV} mV" \
-                    3 "vcc_ddr   — RAM       [!] : ${DDR_MV} mV" \
-                    4 "Back" \
-                    2>&1 > "$CURR_TTY")
-    [ $? -ne 0 ] && return
-    case $CHOICE in
-        1) SetVoltForReg "vdd_arm"   "$VDD_ARM"   0 ;;
-        2) SetVoltForReg "vdd_logic" "$VDD_LOGIC" 0 ;;
-        3) SetVoltForReg "vcc_ddr"   "$VCC_DDR"   1 ;;
-    esac
+    dialog --backtitle "$BACKTITLE" \
+           --title "[ VOLTAGE INFO ]" \
+           --msgbox "Runtime voltages (read-only — OPP framework owns these rails):\n\nvdd_arm   — CPU cores  : ${ARM_MV} mV\nvdd_logic — SoC / GPU  : ${LOGIC_MV} mV\nvcc_ddr   — RAM        : ${DDR_MV} mV\n\nPara cambiar voltajes permanentemente:\n  → DTB Undervolt (menú anterior)" \
+           14 58 > "$CURR_TTY"
 }
 
 # ── DTB Undervolt ────────────────────────────────────────────────────────────
@@ -982,7 +968,6 @@ DTBUndervoltMenu() {
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
         "diag"    "Diagnose — disk vs kernel OPP" \
-        "oc"      "OC Experiment — 1608 MHz [EXPERIMENTAL]" \
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
         2>&1 > "$CURR_TTY")
@@ -1061,12 +1046,6 @@ DTBUndervoltMenu() {
     # GPU undervolt — needs only DTB path, searches its own OPP table
     if [ "$ACTION" = "gpu" ]; then
         DTBGPUUndervoltMenu "$DTB"
-        return
-    fi
-
-    # OC experiment — needs only OPP_BASE, no full scan
-    if [ "$ACTION" = "oc" ]; then
-        DTBOCApply "$DTB" "$OPP_BASE"
         return
     fi
 
@@ -1745,7 +1724,6 @@ BenchmarkMenu() {
                     8  "Set Baseline  — mark next CPU run as 100%" \
                     9  "View History  — scrollable, all entries" \
                     10 "Clear History — delete log and baseline" \
-                    11 "GPU Info      — diagnose EGL/DRM/fbdev" \
                     2>&1 > "$CURR_TTY")
     [ $? -ne 0 ] && return
     case $CHOICE in
@@ -1759,7 +1737,6 @@ BenchmarkMenu() {
         8)  BenchmarkSetBaseline ;;
         9)  BenchmarkViewHistory ;;
         10) BenchmarkClearHistory ;;
-        11) GPUInfo ;;
     esac
 }
 
@@ -1831,20 +1808,19 @@ MainMenu() {
                         --ok-label "Select" \
                         --cancel-label "Exit" \
                         --menu "Temp: $(GetTempC)°C  CPU: $(GetCPUMaxMHz)MHz  GPU: $(GetGPUMaxMHz)MHz  arm: ${ARM_MV}mV" \
-                        22 68 13 \
+                        22 68 12 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
                         4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
-                        5  "DMC / RAM Tuning    ($(GetDMCMaxMHz) MHz)" \
-                        6  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
-                        7  "DTB Undervolt       ($(GetDTBStatus))" \
-                        8  "Real-Time Monitor   ($(GetTempC)°C)" \
-                        9  "Benchmark" \
-                        10 "Save Profile (boot) [${PROF_STATUS}]" \
-                        11 "View Saved Profile" \
-                        12 "Reset Profile" \
-                        13 "Exit" \
+                        5  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
+                        6  "DTB Undervolt       ($(GetDTBStatus))" \
+                        7  "Real-Time Monitor   ($(GetTempC)°C)" \
+                        8  "Benchmark" \
+                        9  "Save Profile (boot) [${PROF_STATUS}]" \
+                        10 "View Saved Profile" \
+                        11 "Reset Profile" \
+                        12 "Exit" \
                         2>&1 > "$CURR_TTY")
 
         local RET=$?
@@ -1855,15 +1831,14 @@ MainMenu() {
             2)  CPUMinFreqMenu ;;
             3)  GovernorMenu ;;
             4)  GPUTuningMenu ;;
-            5)  DMCTuningMenu ;;
-            6)  VoltageMenu ;;
-            7)  DTBUndervoltMenu ;;
-            8)  MonitorMenu ;;
-            9)  BenchmarkMenu ;;
-            10) SaveProfileMenu ;;
-            11) ViewProfileMenu ;;
-            12) ResetProfileMenu ;;
-            13) ExitMenu ;;
+            5)  VoltageMenu ;;
+            6)  DTBUndervoltMenu ;;
+            7)  MonitorMenu ;;
+            8)  BenchmarkMenu ;;
+            9)  SaveProfileMenu ;;
+            10) ViewProfileMenu ;;
+            11) ResetProfileMenu ;;
+            12) ExitMenu ;;
         esac
     done
 }
