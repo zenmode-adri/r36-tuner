@@ -40,7 +40,7 @@ The RK3326 OPP framework owns all voltage regulators — runtime sysfs writes ar
 
 This device uses Rockchip OPP binning (`pvtm-volt-sel`). At boot, the kernel selects a voltage bin based on chip leakage measurement. Most R36S units land on **L2**. The tuner detects the active bin from `dmesg` and patches the correct property (`opp-microvolt-L2`).
 
-Tested results on L2 bin (most R36S units):
+Tested results on L2 bin (our test unit — your bin may differ, check dmesg):
 
 | Component | Stock L2 @ max freq | Stable limit | Result |
 |-----------|---------------------|--------------|--------|
@@ -49,7 +49,7 @@ Tested results on L2 bin (most R36S units):
 
 ### CPU voltage table — all bins (mV)
 
-Rail: `vdd_arm` · Node: `/cpu0-opp-table` · Values: operating voltage (min of [min, typ, max])
+Rail: `vdd_arm` · Node: `/cpu0-opp-table` · Values: operating voltage (min of [min, typ, max]) · **Bold = tested unit (L2)**
 
 | MHz  | default | L0   | L1   | **L2** | L3   |
 |------|---------|------|------|--------|------|
@@ -61,7 +61,7 @@ Rail: `vdd_arm` · Node: `/cpu0-opp-table` · Values: operating voltage (min of 
 
 ### GPU voltage table — all bins (mV)
 
-Rail: `vdd_logic` (shared with SoC logic) · Node: `/gpu-opp-table` · Values: single u32
+Rail: `vdd_logic` (shared with SoC logic) · Node: `/gpu-opp-table` · Values: single u32 · **Bold = tested unit (L2)**
 
 | MHz | default | L0   | L1   | **L2** (stock) | L3   |
 |-----|---------|------|------|----------------|------|
