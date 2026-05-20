@@ -47,7 +47,29 @@ Tested results on L2 bin (most R36S units):
 | CPU (vdd_arm) | 1250 mV @ 1512 MHz | **−125 mV → 1125 mV** | ✅ Long-term stable |
 | GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic is shared with SoC logic — tight margin) |
 
-For full voltage tables (all bins L0–L3) and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
+### CPU voltage table — all bins (mV)
+
+Rail: `vdd_arm` · Node: `/cpu0-opp-table` · Values: operating voltage (min of [min, typ, max])
+
+| MHz  | default | L0   | L1   | **L2** | L3   |
+|------|---------|------|------|--------|------|
+| 1008 | 1075    | 1175 | 1125 | **1075** | 1050 |
+| 1200 | 1200    | 1300 | 1275 | **1200** | 1200 |
+| 1248 | 1250    | 1350 | 1300 | **1225** | 1225 |
+| 1296 | 1250    | 1350 | 1350 | **1250** | 1250 |
+| 1512 | 1250    | 1350 | 1350 | **1250** | 1250 |
+
+### GPU voltage table — all bins (mV)
+
+Rail: `vdd_logic` (shared with SoC logic) · Node: `/gpu-opp-table` · Values: single u32
+
+| MHz | default | L0   | L1   | **L2** (stock) | L3   |
+|-----|---------|------|------|----------------|------|
+| 400 | 1050    | 1050 | 1025 | **975**        | 950  |
+| 480 | 1125    | 1125 | 1100 | **1050**       | 1000 |
+| 520 | 1150    | 1150 | 1150 | **1100**       | 1050 |
+
+For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
 
