@@ -40,7 +40,14 @@ The RK3326 OPP framework owns all voltage regulators — runtime sysfs writes ar
 
 This device uses Rockchip OPP binning (`pvtm-volt-sel`). At boot, the kernel selects a voltage bin based on chip leakage measurement. Most R36S units land on **L2**. The tuner detects the active bin from `dmesg` and patches the correct property (`opp-microvolt-L2`).
 
-Tested result: `-25 mV` offset gives **1275 mV** at 1296/1512 MHz (stock L2: 1300 mV).
+Tested results on L2 bin (most R36S units):
+
+| Component | Stock L2 @ max freq | Stable limit | Result |
+|-----------|---------------------|--------------|--------|
+| CPU (vdd_arm) | 1250 mV @ 1512 MHz | **−125 mV → 1125 mV** | ✅ Long-term stable |
+| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic is shared with SoC logic — tight margin) |
+
+For full voltage tables (all bins L0–L3) and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
 
@@ -70,7 +77,7 @@ If a DTB undervolt is too aggressive, the kernel may fail to boot entirely. The 
 >
 > The authors take **no responsibility** for bricked devices, corrupted SD cards, data loss, or any other damage resulting from the use of this software. The fail-safe mechanisms reduce risk but do not eliminate it.
 >
-> Always start with conservative values (-25 mV) and verify stability before going further.
+> Always start with conservative values (−25 mV CPU, −12.5 mV GPU) and verify stability before going further.
 
 ## Credits
 
