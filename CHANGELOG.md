@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.0 — 2026-05-20
+
+**Feat: CPU OC 1608 MHz — re-added to DTB menu with correct mechanism:**
+- Previous implementation (v1.8) added the OPP node but did not clear `rockchip,avs-scale=4`, which caused the kernel to strip all OPPs >1512 MHz at boot
+- New `DTBCPUOC()` function: adds `opp-1608000000` node AND sets `rockchip,avs-scale=0`
+- Voltage selector: 1350/1325/1300/1275 mV (1350 mV recommended — conservative start)
+- Silicon lottery warning: not all R36S units will be stable; start with max voltage
+- Menu item shows `[ACTIVE]` suffix if 1608 MHz is already in `scaling_available_frequencies`
+- Same safety net as undervolt: backup preserved, safety service active, reboot prompt
+
 ## v2.9 — 2026-05-20 (docs)
 
 **Discovery: CPU OC 1608 MHz works via DTB — no kernel recompile needed:**

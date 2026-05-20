@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="2.8"
+VERSION="3.0"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -755,13 +755,18 @@ DTBUndervoltMenu() {
     local RESTORE_OPT=()
     [ -n "$DTB_QUICK" ] && [ -f "${DTB_QUICK}.bak" ] && RESTORE_OPT=("restore" "Restore original backup")
 
+    local OC_STATUS=""
+    grep -q "1608000" /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies 2>/dev/null \
+        && OC_STATUS=" [ACTIVE]"
+
     local ACTION
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "Permanent OPP voltage patch — reboot required" \
-        14 62 7 \
+        16 62 8 \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
+        "oc"      "CPU OC 1608 MHz — unlock via DTB [EXPERIMENTAL]${OC_STATUS}" \
         "diag"    "Diagnose — disk vs kernel OPP" \
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
@@ -848,6 +853,12 @@ DTBUndervoltMenu() {
     local OPP_BIN_PROP="opp-microvolt"
     local BIN_LEVEL; BIN_LEVEL=$(dmesg 2>/dev/null | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
     [ -n "$BIN_LEVEL" ] && OPP_BIN_PROP="opp-microvolt-${BIN_LEVEL}"
+
+    # CPU OC 1608 MHz — needs only DTB, OPP_BASE, and bin prop
+    if [ "$ACTION" = "oc" ]; then
+        DTBCPUOC "$DTB" "$OPP_BASE" "$OPP_BIN_PROP"
+        return
+    fi
 
     # 5. Read OPP entries
     local NODES=() FREQS=() VOLTS=()
@@ -1104,6 +1115,81 @@ else: print('?')
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+        cp "${DTB}.bak" "$DTB"
+    fi
+}
+
+# ── CPU OC 1608 MHz ───────────────────────────────────────────────────────────
+
+DTBCPUOC() {
+    local DTB="$1" OPP_BASE="$2" OPP_BIN_PROP="$3"
+
+    # Current state
+    local IS_ACTIVE=0
+    grep -q "1608000" /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies 2>/dev/null \
+        && IS_ACTIVE=1
+    local HAS_NODE=0
+    fdtget "$DTB" "$OPP_BASE/opp-1608000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
+
+    local STATE_MSG
+    if   [ $IS_ACTIVE -eq 1 ]; then
+        STATE_MSG="Status: 1608 MHz ACTIVE (kernel loaded)\n\n"
+    elif [ $HAS_NODE -eq 1 ]; then
+        STATE_MSG="Status: OPP node in DTB but NOT active yet\n(reboot pending or avs-scale not cleared)\n\n"
+    else
+        STATE_MSG="Status: not active — DTB patch required\n\n"
+    fi
+
+    dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
+        --yesno "${STATE_MSG}EXPERIMENTAL — not all R36S units are equal.\nSilicon quality varies between devices.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup.\n\nContinue?" 20 62 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    # Voltage selection
+    local VOLT_UV
+    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — VOLTAGE @ 1608 MHz ]" \
+        --menu "Stock 1512 MHz L2 = 1300 mV\nHigher voltage = safer but more heat/power:" \
+        14 62 4 \
+        "1350000" "1350 mV  safe/conservative  (recommended)" \
+        "1325000" "1325 mV" \
+        "1300000" "1300 mV  tested stable on dev unit" \
+        "1275000" "1275 mV  aggressive — good silicon required" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$VOLT_UV" ] && return
+
+    local VOLT_MV=$(( VOLT_UV / 1000 ))
+    local BAK_NOTE; [ -f "${DTB}.bak" ] \
+        && BAK_NOTE="Backup: ${DTB}.bak (existing)" \
+        || BAK_NOTE="Backup: ${DTB}.bak (will create)"
+
+    dialog --backtitle "$BACKTITLE" --title "[ CPU OC — CONFIRM ]" \
+        --yesno "Apply CPU OC 1608 MHz @ ${VOLT_MV} mV\n\nDTB changes:\n  + $OPP_BASE/opp-1608000000\n    ${OPP_BIN_PROP} = ${VOLT_MV} ${VOLT_MV} ${VOLT_MV} mV\n  + rockchip,avs-scale = 0\n\n${BAK_NOTE}\nReboot required." 15 60 > "$CURR_TTY"
+    [ $? -ne 0 ] && return
+
+    # Backup (preserve true original — never overwrite)
+    if [ ! -f "${DTB}.bak" ]; then
+        cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
+    fi
+
+    dialog --infobox "Patching DTB..." 4 35 > "$CURR_TTY"
+
+    local FAIL=0
+    # Create OPP node (opp-hz is 64-bit: high=0, low=1608000000)
+    fdtput -c "$DTB" "$OPP_BASE/opp-1608000000" 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" opp-hz 0 1608000000 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" "$OPP_BIN_PROP" \
+        $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null || FAIL=1
+    # Disable AVS OPP stripping
+    fdtput -t u "$DTB" "$OPP_BASE" "rockchip,avs-scale" 0 2>/dev/null || FAIL=1
+
+    if [ $FAIL -eq 0 ]; then
+        touch "$DTB_PENDING"
+        SetupDTBSafetyService
+        dialog --backtitle "$BACKTITLE" --title "✓ OC Patched" \
+            --yesno "1608 MHz OPP added @ ${VOLT_MV} mV\nrockchip,avs-scale → 0\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 12 52 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+    else
+        dialog --backtitle "$BACKTITLE" --title "[ CPU OC ]" \
             --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
