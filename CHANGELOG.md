@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.8 — 2026-05-20
+
+**Limpieza de menús — eliminados ítems obsoletos/muertos:**
+- OC Experiment (1608 MHz) eliminado del submenú DTB Undervolt — kernel ignora el OPP, cap en 1512 MHz
+- DMC / RAM Tuning eliminado del menú principal — ATF controla el DMC, sysfs inaccesible en R36
+- Voltage Info convertido a read-only (solo muestra voltajes) — OPP framework revierte cualquier write
+- GPU Info eliminado del menú Benchmark — herramienta de diagnóstico de desarrollo, inútil para usuario final
+- Menú principal: 13 → 12 ítems
+
+**Limpieza de código muerto:**
+- Eliminadas funciones huérfanas: `DTBOCApply`, `DMCTuningMenu`, `SetVoltForReg`, `ApplyVolt`, `GPUInfo`, `GetDMCAvail`
+- Eliminado startup check de OC_PENDING
+- Eliminada variable `OC_PENDING`
+- Eliminado sufijo `— ELITE HYBRID` del backtitle
+- -258 líneas de dead code
+
 ## v2.7 — 2026-05-19
 
 **Feat: DTBGPUUndervoltMenu — modo Uniform + Fine Tune (igual que CPU):**
