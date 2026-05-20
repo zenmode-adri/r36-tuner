@@ -45,7 +45,8 @@ Tested results on L2 bin (our test unit — your bin may differ, check dmesg):
 | Component | Stock L2 @ max freq | Stable limit | Result |
 |-----------|---------------------|--------------|--------|
 | CPU (vdd_arm) | 1300 mV @ 1512 MHz | **−125 mV → 1175 mV** | ✅ Long-term stable |
-| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic is shared with SoC logic — tight margin) |
+| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic shared with SoC logic — tight margin) |
+| RAM/DMC (vdd_logic) | — | not recommended | ⚠️ Shares vdd_logic with GPU — benefit marginal, risk high |
 
 ### CPU voltage table — all bins (mV)
 
@@ -68,6 +69,20 @@ Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · 
 | 400 | 1050    | 1050 | 1025 | **975** | 950  |
 | 480 | 1125    | 1125 | 1100 | **1050** | 1000 |
 | 520 | 1150    | 1150 | 1150 | **1100** | 1050 |
+
+### DMC (RAM controller) voltage table — all bins (mV)
+
+Rail: `vdd_logic` (shared with GPU and SoC logic) · Node: `/dmc-opp-table` · **Bold = tested unit (L2)**
+
+| MHz | L0   | L1   | **L2**   | L3   |
+|-----|------|------|----------|------|
+| 528 | 975  | 975  | **950**  | 950  |
+| 666 | 1050 | 1000 | **975**  | 950  |
+| 786 | 1100 | 1050 | **1025** | 1000 |
+
+> DMC shares `vdd_logic` with the GPU — the PMIC always sets the rail to the highest voltage demanded by any consumer. Patching DMC voltages lower has marginal effect and risks DDR instability (random crashes, data corruption).
+>
+> **RAM OC is not possible via DTB.** DMC frequency is owned by ATF (ARM Trusted Firmware, version 0x105) via SMC calls — the kernel devfreq interface has no control over it.
 
 For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
 
