@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.1 — 2026-05-21
+
+**Discovery: GPU OC 600 MHz — confirmed stable via DTB only:**
+- GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` — no rate table in driver, no kernel changes needed
+- Unlike CPU OC, GPU has no `rockchip,avs-scale` — adding `opp-600000000` to `/gpu-opp-table` is sufficient
+- Voltage: 1150 mV (`opp-microvolt-L2`) — PMIC hard limit for `vdd_logic`, within `rockchip,max-volt = 1175 mV`
+- Result: **18 fps** terrain off-screen vs 15–16 fps @ 520 MHz undervolted (**+20%**), stable at 62°C
+- devfreq correctly exposes `600000000` in `available_frequencies` after reboot
+- Updated `docs/opp-research.md` and `README.md` with GPU OC findings and voltage table
+
 ## v3.0 — 2026-05-20
 
 **Feat: CPU OC 1608 MHz — re-added to DTB menu with correct mechanism:**

@@ -10,6 +10,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - DMC / RAM max frequency selection
 - **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Offsets from -100 mV to +50 mV. Reboot required.
 - **CPU OC to 1608 MHz** — unlocks 1608 MHz by patching `rockchip,avs-scale` in the DTB (no kernel recompile needed). The PX30/RK3326 clock driver already contains 1608 MHz; it was being suppressed by the AVS mechanism at runtime.
+- **GPU OC to 600 MHz** — adds a 600 MHz OPP to the GPU OPP table in the DTB. The GPU composite clock uses GPLL/2 = 600 MHz exactly; no clock driver changes needed.
 - **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
@@ -86,6 +87,23 @@ Rail: `vdd_logic` (shared with GPU and SoC logic) · Node: `/dmc-opp-table` · *
 > **RAM OC is not possible via DTB.** DMC frequency is owned by ATF (ARM Trusted Firmware, version 0x105) via SMC calls — the kernel devfreq interface has no control over it.
 
 For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
+
+## GPU OC — 600 MHz
+
+The GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` exactly. No GPU rate table exists in the driver — the only limit was the OPP table. Adding a `opp-600000000` node is sufficient.
+
+**Voltage:** 1150 mV — the PMIC hard limit for `vdd_logic` (shared rail). Within `rockchip,max-volt = 1175 mV`.
+
+**Benchmark results (L2 bin, off-screen terrain):**
+
+| Condition       | Freq    | Voltage  | terrain fps |
+|-----------------|---------|----------|-------------|
+| UV baseline     | 520 MHz | 1087.5 mV | 15–16      |
+| GPU OC          | 600 MHz | 1150 mV  | **18 fps**  |
+
+**+20% FPS**, stable at 62°C. devfreq manages the new OPP correctly after reboot.
+
+> `vdd_logic` is shared between GPU and all SoC logic. The undervolt limit at 520 MHz was −12.5 mV — the rail has very tight margins. Start at 1150 mV and reduce cautiously. If the kernel crashes before `basic.target`, manual SD card recovery is required.
 
 ## CPU OC — 1608 MHz
 

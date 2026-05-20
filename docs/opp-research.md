@@ -62,8 +62,11 @@ DTB node format: `opp-<hz>` · Values: single u32 big-endian (not 3-tuple like C
 | 400   | 1050 mV       | 1050   | 1025   | **975**         | 950    |
 | 480   | 1125 mV       | 1125   | 1100   | **1050**        | 1000   |
 | 520   | 1150 mV       | 1150   | 1150   | **1100**        | 1050   |
+| **600** | **1150 mV** | **1150** | **1150** | **1150**     | **1150** |
 
-> Constraint: vdd_logic min=950 mV, max=1150 mV. Rail is **shared** between GPU and all SoC logic — undervolt margin is much tighter than CPU.
+> Constraint: vdd_logic min=950 mV, max=1150 mV. Rail is **shared** between GPU and all SoC logic — undervolt margin is much tighter than CPU.  
+> `rockchip,max-volt = 1175000 µV` — OPP framework enforces this ceiling on all entries.  
+> 600 MHz row: added via OC patch (see GPU OC section below). 1150 mV is the PMIC hard limit.
 
 ### GPU Undervolt Test Results (L2 bin)
 
@@ -92,10 +95,71 @@ systemctl start emulationstation
 ```
 
 Key scores (off-screen, ES stopped):
-| Condition      | terrain fps | Notes               |
-|----------------|-------------|---------------------|
-| Stock          | ~17         | baseline            |
-| GPU −12.5 mV   | 14          | stable, no crash    |
+| Condition           | terrain fps | Notes                        |
+|---------------------|-------------|------------------------------|
+| Stock (520 MHz)     | ~17         | baseline                     |
+| GPU −12.5 mV UV     | 14–16       | stable, undervolted          |
+| GPU OC 600 MHz      | **18**      | +20% vs UV baseline, stable  |
+
+---
+
+## GPU OC — 600 MHz (confirmed working)
+
+**600 MHz is achievable via DTB only — no kernel recompile needed.**
+
+### Clock driver analysis
+
+No GPU rate table exists in `drivers/clk/rockchip/clk-px30.c`. The GPU uses a composite
+clock (`clk_gpu_src`) with parent `gpll` (1200 MHz) and an integer divider:
+
+```
+gpll (1200 MHz) / 2 = 600 MHz  ✓
+```
+
+Unlike the CPU (which needed `rockchip,avs-scale=0` to unblock higher OPPs), the GPU OPP
+table has no such restriction. The only limit is what OPP nodes exist in the DTB.
+
+Confirmed by writing `600000000` to `/sys/kernel/debug/clk/clk_gpu/clk_rate` — the clock
+driver accepted it immediately, confirming hardware capability.
+
+### DTB change required
+
+Add one node to `/gpu-opp-table`:
+
+```
+fdtput -c  /boot/rk3326-r36s-linux.dtb /gpu-opp-table/opp-600000000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /gpu-opp-table/opp-600000000 opp-hz 0 600000000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /gpu-opp-table/opp-600000000 opp-microvolt 1150000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /gpu-opp-table/opp-600000000 opp-microvolt-L2 1150000
+```
+
+Voltage used: **1150 mV** — PMIC hard limit for `vdd_logic`. Within `rockchip,max-volt = 1175 mV`.
+
+After reboot, `available_frequencies` shows `600000000 520000000 480000000 400000000` and
+devfreq correctly manages the new OPP with proper voltage.
+
+### Benchmark results (L2 bin, off-screen)
+
+| Condition           | Freq    | Voltage  | terrain fps |
+|---------------------|---------|----------|-------------|
+| Undervolted (stock) | 520 MHz | 1087.5 mV | 15–16     |
+| GPU OC              | 600 MHz | 1150 mV  | **18**      |
+
+**+20% FPS**. Stable at 62°C. No crash over 20s terrain run.
+
+### Voltage reduction headroom
+
+1150 mV is conservative (PMIC max). Untested lower voltages for 600 MHz:
+
+| Target | Margin vs UV 520 MHz baseline |
+|--------|-------------------------------|
+| 1137.5 mV | +50 mV over undervolted 520 MHz |
+| 1125 mV   | +37.5 mV |
+| 1112.5 mV | +25 mV |
+
+The `-12.5 mV` was the undervolt limit at 520 MHz — vdd_logic has very tight margins.
+Start high (1150 mV) and reduce cautiously. If kernel crashes before `basic.target`,
+manual SD card recovery is required (safety service cannot act).
 
 ---
 
