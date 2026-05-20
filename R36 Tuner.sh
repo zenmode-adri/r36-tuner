@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.0"
+VERSION="3.1"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
