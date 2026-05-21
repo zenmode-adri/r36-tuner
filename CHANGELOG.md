@@ -11,7 +11,6 @@
 - Crash behavior at 1012.5 mV: device boots fine (GPU starts at 400 MHz), artifacts appear only when devfreq scales to 600 MHz under load — safety service does NOT trigger
 - Recovery at any failed voltage: patch DTB via SSH without reboot (`fdtput` to restore 1025 mV)
 - Updated `docs/opp-research.md` with complete sweep table and analysis
-- SSH now auto-starts at boot (`systemctl enable ssh.service`) — no manual activation needed
 
 ## v3.3 — 2026-05-21
 
