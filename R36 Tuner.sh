@@ -4,7 +4,7 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.3"
+VERSION="3.5"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -417,23 +417,23 @@ DTBGPUUndervoltMenu() {
     for (( i=0; i<N; i++ )); do OFFSETS_UV[$i]=0; done
 
     if [ "$PATCH_MODE" = "uniform" ]; then
+        # Full offset range -200 to +50 mV, 12.5 mV steps, generated dynamically
+        local -a OFF_ITEMS=()
+        local o=50000
+        while [ $o -ge -200000 ]; do
+            local abs; [ $o -lt 0 ] && abs=$(( -o )) || abs=$o
+            local sign; [ $o -lt 0 ] && sign="-" || sign="+"
+            local w=$(( abs / 1000 )); local f=$(( abs % 1000 ))
+            local lbl; [ $f -eq 500 ] && lbl="${sign}${w}.5 mV" || lbl="${sign}${w} mV"
+            [ $o -eq 0 ] && lbl="0 mV  (sin cambio)"
+            OFF_ITEMS+=("$o" "$lbl")
+            o=$(( o - 12500 ))
+        done
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — UNIFORM ]" \
-            --menu "Aplicado a los ${N} OPPs  |  Step: 12.5 mV (mínimo PMIC):" \
-            24 62 14 \
-            "-125000" "-125 mV    [extremo]" \
-            "-112500" "-112.5 mV" \
-            "-100000" "-100 mV    [agresivo]" \
-             "-87500" " -87.5 mV" \
-             "-75000" " -75 mV" \
-             "-62500" " -62.5 mV" \
-             "-50000" " -50 mV    [moderado]" \
-             "-37500" " -37.5 mV" \
-             "-25000" " -25 mV    [conservador]" \
-             "-12500" " -12.5 mV  [mínimo]" \
-                  "0" "   0 mV   [solo leer tabla]" \
-              "25000" " +25 mV" \
-              "50000" " +50 mV   [restaurar margen]" \
+            --menu "Aplicado a los ${N} OPPs  |  Step: 12.5 mV\nFloor hardware: 950 mV (vdd_logic PMIC min)\nStart conservative — go down gradually." \
+            20 62 10 \
+            "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
         [ -z "$OFFSET_UV" ] && return
         [ "$OFFSET_UV" = "0" ] && return
@@ -447,7 +447,7 @@ DTBGPUUndervoltMenu() {
                 local cur_mv=$(( GPU_VOLTS_UV[i] / 1000 ))
                 local off_uv="${OFFSETS_UV[$i]}"
                 local new_uv=$(( GPU_VOLTS_UV[i] + off_uv ))
-                [ $new_uv -lt 700000 ] && new_uv=700000
+                [ $new_uv -lt 950000 ] && new_uv=950000
                 local new_mv=$(( new_uv / 1000 ))
                 local new_frac=$(( new_uv % 1000 ))
                 local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
@@ -480,26 +480,25 @@ DTBGPUUndervoltMenu() {
             local stock_mv=$(( GPU_VOLTS_UV[IDX] / 1000 ))
             local cur_off="${OFFSETS_UV[$IDX]}"
 
+            # Full offset range for this OPP, dynamic
+            local -a FT_OFF_ITEMS=()
+            local fo=50000
+            while [ $fo -ge -200000 ]; do
+                local abs2; [ $fo -lt 0 ] && abs2=$(( -fo )) || abs2=$fo
+                local sign2; [ $fo -lt 0 ] && sign2="-" || sign2="+"
+                local w2=$(( abs2 / 1000 )); local f2=$(( abs2 % 1000 ))
+                local lbl2; [ $f2 -eq 500 ] && lbl2="${sign2}${w2}.5 mV" || lbl2="${sign2}${w2} mV"
+                [ $fo -eq 0 ] && lbl2="0 mV  (sin cambio)"
+                FT_OFF_ITEMS+=("$fo" "$lbl2")
+                fo=$(( fo - 12500 ))
+            done
             local FREQ_OFFSET
             FREQ_OFFSET=$(dialog --backtitle "$BACKTITLE" \
                 --title "[ GPU FINE TUNE — ${GPU_FREQS_MHZ[$IDX]} MHz ]" \
                 --default-item "$cur_off" \
-                --menu "Stock: ${stock_mv} mV  |  Selecciona offset:" \
-                24 60 14 \
-                "-125000" "-125 mV" \
-                "-112500" "-112.5 mV" \
-                "-100000" "-100 mV" \
-                 "-87500" " -87.5 mV" \
-                 "-75000" " -75 mV" \
-                 "-62500" " -62.5 mV" \
-                 "-50000" " -50 mV" \
-                 "-37500" " -37.5 mV" \
-                 "-25000" " -25 mV" \
-                 "-12500" " -12.5 mV" \
-                      "0" "   0 mV  (sin cambio)" \
-                  "12500" " +12.5 mV" \
-                  "25000" " +25 mV" \
-                  "50000" " +50 mV" \
+                --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelecciona offset:" \
+                20 60 10 \
+                "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && continue
             OFFSETS_UV[$IDX]="$FREQ_OFFSET"
@@ -517,7 +516,7 @@ DTBGPUUndervoltMenu() {
         local mv=$(( GPU_VOLTS_UV[i] / 1000 ))
         local off_uv="${OFFSETS_UV[$i]}"
         local new_uv=$(( GPU_VOLTS_UV[i] + off_uv ))
-        [ $new_uv -lt 700000 ] && new_uv=700000
+        [ $new_uv -lt 950000 ] && new_uv=950000
         local new_mv=$(( new_uv / 1000 ))
         local new_frac=$(( new_uv % 1000 ))
         local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
@@ -549,7 +548,7 @@ DTBGPUUndervoltMenu() {
         local new_vals=""
         for uv in $volt_raw; do
             local new_uv=$(( uv + off_uv ))
-            [ $new_uv -lt 700000 ] && new_uv=700000
+            [ $new_uv -lt 950000 ] && new_uv=950000
             new_vals+="$new_uv "
         done
         # shellcheck disable=SC2086
@@ -989,23 +988,23 @@ else: print('?')
     for (( i=0; i<N; i++ )); do OFFSETS_UV[$i]=0; done
 
     if [ "$PATCH_MODE" = "uniform" ]; then
+        # Full offset range -200 to +50 mV, 12.5 mV steps, generated dynamically
+        local -a OFF_ITEMS=()
+        local o=50000
+        while [ $o -ge -200000 ]; do
+            local abs; [ $o -lt 0 ] && abs=$(( -o )) || abs=$o
+            local sign; [ $o -lt 0 ] && sign="-" || sign="+"
+            local w=$(( abs / 1000 )); local f=$(( abs % 1000 ))
+            local lbl; [ $f -eq 500 ] && lbl="${sign}${w}.5 mV" || lbl="${sign}${w} mV"
+            [ $o -eq 0 ] && lbl="0 mV  (read table only)"
+            OFF_ITEMS+=("$o" "$lbl")
+            o=$(( o - 12500 ))
+        done
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — UNIFORM OFFSET ]" \
-            --menu "Applied to all ${N} OPP entries  |  Step: 12.5 mV (PMIC minimum):" \
-            24 62 14 \
-            "-125000" "-125 mV    [extreme]" \
-            "-112500" "-112.5 mV" \
-            "-100000" "-100 mV    [aggressive]" \
-             "-87500" " -87.5 mV" \
-             "-75000" " -75 mV" \
-             "-62500" " -62.5 mV" \
-             "-50000" " -50 mV    [moderate]" \
-             "-37500" " -37.5 mV" \
-             "-25000" " -25 mV    [conservative]" \
-             "-12500" " -12.5 mV  [minimal]" \
-                  "0" "   0 mV   [read table only]" \
-              "25000" " +25 mV" \
-              "50000" " +50 mV   [restore margin]" \
+            --menu "Applied to all ${N} OPPs  |  Step: 12.5 mV\nFloor: 950 mV (PMIC min)\nStart conservative — go down gradually." \
+            20 62 10 \
+            "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
         [ -z "$OFFSET_UV" ] && return
         [ "$OFFSET_UV" = "0" ] && return
@@ -1020,7 +1019,7 @@ else: print('?')
                 local cur_mv=$(( ${VOLTS[$i]} / 1000 ))
                 local off_uv="${OFFSETS_UV[$i]}"
                 local new_uv=$(( ${VOLTS[$i]} + off_uv ))
-                [ $new_uv -lt 700000 ] && new_uv=700000
+                [ $new_uv -lt 950000 ] && new_uv=950000
                 local new_mv=$(( new_uv / 1000 ))
                 local new_frac=$(( new_uv % 1000 ))
                 local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
@@ -1055,25 +1054,24 @@ else: print('?')
             local stock_mv=$(( ${VOLTS[$IDX]} / 1000 ))
             local cur_off="${OFFSETS_UV[$IDX]}"
 
+            # Full offset range for this OPP, dynamic
+            local -a FT_OFF_ITEMS=()
+            local fo=50000
+            while [ $fo -ge -200000 ]; do
+                local abs2; [ $fo -lt 0 ] && abs2=$(( -fo )) || abs2=$fo
+                local sign2; [ $fo -lt 0 ] && sign2="-" || sign2="+"
+                local w2=$(( abs2 / 1000 )); local f2=$(( abs2 % 1000 ))
+                local lbl2; [ $f2 -eq 500 ] && lbl2="${sign2}${w2}.5 mV" || lbl2="${sign2}${w2} mV"
+                [ $fo -eq 0 ] && lbl2="0 mV  (no change)"
+                FT_OFF_ITEMS+=("$fo" "$lbl2")
+                fo=$(( fo - 12500 ))
+            done
             local FREQ_OFFSET
             FREQ_OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — ${freq_mhz} MHz ]" \
                 --default-item "$cur_off" \
-                --menu "Stock: ${stock_mv} mV  |  Select offset:" \
-                24 60 14 \
-                "-125000" "-125 mV" \
-                "-112500" "-112.5 mV" \
-                "-100000" "-100 mV" \
-                 "-87500" " -87.5 mV" \
-                 "-75000" " -75 mV" \
-                 "-62500" " -62.5 mV" \
-                 "-50000" " -50 mV" \
-                 "-37500" " -37.5 mV" \
-                 "-25000" " -25 mV" \
-                 "-12500" " -12.5 mV" \
-                      "0" "   0 mV  (no change)" \
-                  "12500" " +12.5 mV" \
-                  "25000" " +25 mV" \
-                  "50000" " +50 mV" \
+                --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelect offset:" \
+                20 60 10 \
+                "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && continue
             OFFSETS_UV[$IDX]="$FREQ_OFFSET"
@@ -1092,7 +1090,7 @@ else: print('?')
         local mv=$(( ${VOLTS[$i]} / 1000 ))
         local off_uv="${OFFSETS_UV[$i]}"
         local new_uv=$(( ${VOLTS[$i]} + off_uv ))
-        [ $new_uv -lt 700000 ] && new_uv=700000
+        [ $new_uv -lt 950000 ] && new_uv=950000
         local new_mv=$(( new_uv / 1000 ))
         local new_frac=$(( new_uv % 1000 ))
         local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
@@ -1125,7 +1123,7 @@ else: print('?')
         local new_vals=""
         for uv in $volt_raw; do
             local new_uv=$(( uv + off_uv ))
-            [ $new_uv -lt 700000 ] && new_uv=700000
+            [ $new_uv -lt 950000 ] && new_uv=950000
             new_vals+="$new_uv "
         done
         # shellcheck disable=SC2086
@@ -1170,15 +1168,20 @@ DTBCPUOC() {
         --yesno "${STATE_MSG}EXPERIMENTAL — not all R36S units are equal.\nSilicon quality varies between devices.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup.\n\nContinue?" 20 62 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    # Voltage selection
+    # Voltage selection — full hardware range 950–1350 mV, 12.5 mV steps
+    local STOCK_MV; STOCK_MV=$(fdtget -t u "$DTB" "$OPP_BASE/opp-1512000000" "$OPP_BIN_PROP" 2>/dev/null | awk '{print int($1/1000)}')
+    [ -z "$STOCK_MV" ] && STOCK_MV="?"
+    local -a VOLT_ITEMS=()
+    local v=1350000
+    while [ $v -ge 950000 ]; do
+        VOLT_ITEMS+=("$v" "$(( v / 1000 )) mV")
+        v=$(( v - 12500 ))
+    done
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — VOLTAGE @ 1608 MHz ]" \
-        --menu "Stock 1512 MHz L2 = 1300 mV\nHigher voltage = safer but more heat/power:" \
-        14 62 4 \
-        "1350000" "1350 mV  safe/conservative  (recommended)" \
-        "1325000" "1325 mV" \
-        "1300000" "1300 mV  tested stable on dev unit" \
-        "1275000" "1275 mV  aggressive — good silicon required" \
+        --menu "Stock 1512 MHz = ${STOCK_MV} mV (your chip)\nStart high — go down gradually.\nToo low = may not boot (safety service helps)." \
+        18 62 10 \
+        "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
 
@@ -1273,19 +1276,22 @@ DTBGPUOC() {
         --yesno "${STATE_MSG}Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics.\n\nContinue?" 20 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    # Voltage selection
+    # Voltage selection — full vdd_logic range 950–1150 mV, 12.5 mV steps
+    local STOCK_GPU_MV; STOCK_GPU_MV=$(fdtget -t u "$DTB" "${GPU_OPP}/opp-520000000" "$OPP_BIN_PROP" 2>/dev/null | awk '{print int($1/1000)}')
+    [ -z "$STOCK_GPU_MV" ] && STOCK_GPU_MV="?"
+    local -a VOLT_ITEMS=()
+    local v=1150000
+    while [ $v -ge 950000 ]; do
+        local mv=$(( v / 1000 )); local frac=$(( v % 1000 ))
+        local label="${mv} mV"; [ "$frac" -eq 500 ] && label="${mv}.5 mV"
+        VOLT_ITEMS+=("$v" "$label")
+        v=$(( v - 12500 ))
+    done
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU OC — VOLTAGE @ 600 MHz ]" \
-        --menu "Start high and reduce gradually.\nResults vary by chip (silicon lottery):" \
-        16 66 8 \
-        "1150000" "1150 mV  PMIC max — safe starting point" \
-        "1112500" "1112.5 mV" \
-        "1087500" "1087.5 mV" \
-        "1075000" "1075 mV" \
-        "1062500" "1062.5 mV" \
-        "1050000" "1050 mV" \
-        "1037500" "1037.5 mV" \
-        "1025000" "1025 mV  aggressive — test thoroughly" \
+        --menu "Stock 520 MHz = ${STOCK_GPU_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
+        18 62 10 \
+        "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
 

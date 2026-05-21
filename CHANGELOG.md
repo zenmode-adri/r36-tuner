@@ -1,5 +1,36 @@
 # Changelog
 
+## v3.5 — 2026-05-21
+
+**Full voltage range in all OC/UV menus — no hardcoded limits:**
+- CPU OC 1608 MHz voltage: expanded from 4 options (1275–1350 mV) to full hardware range 950–1350 mV in 12.5 mV steps
+- GPU OC 600 MHz voltage: expanded to full vdd_logic range 950–1150 mV in 12.5 mV steps
+- CPU UV uniform offset: expanded to -200 mV → +50 mV in 12.5 mV steps (was -125 → +50 mV)
+- CPU UV fine-tune per-freq: same full range
+- GPU UV uniform offset: same full range
+- GPU UV fine-tune per-OPP: same full range
+- All menus now show your chip's current stock voltage as reference point
+- PMIC floor corrected: 950 mV (was 700 mV) — matches real hardware minimum for vdd_arm and vdd_logic
+- No recommended voltages — silicon lottery applies. Start high, go down gradually.
+
+**Research: CPU OC 1608 MHz — voltage sweep confirmed (L2 bin, leakage=13):**
+- Sweep performed with real C stress (4 cores, ALU+FP+branch, 300s)
+- 1200 mV: stable 300s | 1187.5 mV: stable 300s | 1175 mV: stable 60s but fails 300s | 1162.5 mV: crash <10s
+- Confirmed floor: **1187.5 mV** (-112.5 mV vs stock 1300 mV) for sustained load
+- Battery droop effect: low battery raises internal resistance → voltage sag under load → instability at borderline voltages. Charge fully before sweeping.
+- These are ONE chip's results — your chip may differ (silicon lottery)
+
+**Research: GPU UV fine-tune — 480 MHz and 520 MHz (L2 bin):**
+- 520 MHz: stable down to **950 mV** (PMIC floor = -150 mV vs stock 1100 mV) — tested on-screen terrain, no artifacts
+- 480 MHz: stable at **962.5 mV** (same as 400 MHz OPP) — tested on-screen terrain, no artifacts
+- Key insight: uniform UV was limited by 400 MHz OPP hitting PMIC floor during boot. Fine-tune of 480/520 MHz independently allows much deeper UV since those OPPs are only used post-boot.
+- 400 MHz: floor remains 962.5 mV (boot stability — other SoC components on vdd_logic need ≥962.5 mV during init)
+
+**Recommended user flow (our findings, your mileage may vary):**
+- For overclocking: enable CPU OC 1608 MHz + GPU OC 600 MHz + RAM OC 928 MHz at safe voltages first, then reduce voltage gradually until you find your chip's stable limit
+- For battery savings / thermals: use CPU Undervolt and GPU Undervolt on stock frequencies
+- Always reboot and stress-test after each voltage change
+
 ## v3.4 — 2026-05-21
 
 **Research: GPU OC 600 MHz — complete voltage sweep (L2 bin):**
