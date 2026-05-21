@@ -1276,12 +1276,16 @@ DTBGPUOC() {
     # Voltage selection
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU OC — VOLTAGE @ 600 MHz ]" \
-        --menu "vdd_logic PMIC max = 1150 mV\n(shared with SoC logic — tight margin):" \
-        14 62 4 \
-        "1150000" "1150 mV  PMIC max for vdd_logic  (recommended)" \
-        "1137500" "1137.5 mV" \
-        "1125000" "1125 mV" \
-        "1112500" "1112.5 mV  aggressive" \
+        --menu "Tested range: 1150 mV (PMIC max) down to 1025 mV stable\n(1012.5 mV = artifacts confirmed):" \
+        16 66 8 \
+        "1025000" "1025 mV  confirmed stable limit  (recommended)" \
+        "1037500" "1037.5 mV" \
+        "1050000" "1050 mV" \
+        "1062500" "1062.5 mV" \
+        "1075000" "1075 mV" \
+        "1087500" "1087.5 mV" \
+        "1112500" "1112.5 mV" \
+        "1150000" "1150 mV  PMIC max (conservative)" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
 

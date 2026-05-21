@@ -62,7 +62,7 @@ DTB node format: `opp-<hz>` · Values: single u32 big-endian (not 3-tuple like C
 | 400   | 1050 mV       | 1050   | 1025   | **975**         | 950    |
 | 480   | 1125 mV       | 1125   | 1100   | **1050**        | 1000   |
 | 520   | 1150 mV       | 1150   | 1150   | **1100**        | 1050   |
-| **600** | **1150 mV** | **1150** | **1150** | **1150**     | **1150** |
+| **600** | **1150 mV** | **1150** | **1150** | **1025**     | **—** |
 
 > Constraint: vdd_logic min=950 mV, max=1150 mV. Rail is **shared** between GPU and all SoC logic — undervolt margin is much tighter than CPU.  
 > `rockchip,max-volt = 1175000 µV` — OPP framework enforces this ceiling on all entries.  
@@ -138,28 +138,44 @@ Voltage used: **1150 mV** — PMIC hard limit for `vdd_logic`. Within `rockchip,
 After reboot, `available_frequencies` shows `600000000 520000000 480000000 400000000` and
 devfreq correctly manages the new OPP with proper voltage.
 
-### Benchmark results (L2 bin, off-screen)
+### Benchmark results (L2 bin, on-screen, ES stopped)
 
-| Condition           | Freq    | Voltage  | terrain fps |
-|---------------------|---------|----------|-------------|
-| Undervolted (stock) | 520 MHz | 1087.5 mV | 15–16     |
-| GPU OC              | 600 MHz | 1150 mV  | **18**      |
+| Condition           | Freq    | Voltage   | terrain fps on-screen |
+|---------------------|---------|-----------|----------------------|
+| Undervolted (stock) | 520 MHz | 1087.5 mV | 14–15                |
+| GPU OC (initial)    | 600 MHz | 1150 mV   | 15                   |
+| GPU OC (optimized)  | 600 MHz | **1025 mV** | **15**             |
 
-**+20% FPS**. Stable at 62°C. No crash over 20s terrain run.
+**+20% FPS vs stock UV** (18 fps off-screen). Stable long-term at ~50°C.
 
-### Voltage reduction headroom
+### Voltage sweep — complete (L2 bin, on-screen, 30–90s terrain)
 
-1150 mV is conservative (PMIC max). Untested lower voltages for 600 MHz:
+Started at PMIC max (1150 mV) and reduced in 12.5 mV steps each reboot:
 
-| Target | Margin vs UV 520 MHz baseline |
-|--------|-------------------------------|
-| 1137.5 mV | +50 mV over undervolted 520 MHz |
-| 1125 mV   | +37.5 mV |
-| 1112.5 mV | +25 mV |
+| Voltage | FPS on-screen | Artifacts | Result |
+|---------|---------------|-----------|--------|
+| 1150 mV | 15 | No | Stable |
+| 1112.5 mV | 15 | No | Stable |
+| 1100 mV | 15 | No | Stable |
+| 1087.5 mV | 15 | No | Stable |
+| 1062.5 mV | 15 | No | Stable |
+| 1037.5 mV | 15 | No | Stable |
+| **1025 mV** | **15** | **No** | **✅ Stable — confirmed limit** |
+| 1012.5 mV | 13 | **Yes** | ❌ Artifacts — do not use |
 
-The `-12.5 mV` was the undervolt limit at 520 MHz — vdd_logic has very tight margins.
-Start high (1150 mV) and reduce cautiously. If kernel crashes before `basic.target`,
-manual SD card recovery is required (safety service cannot act).
+**Total undervolt: −125 mV** from initial OC voltage (1150 mV → 1025 mV).  
+Same silicon margin as CPU UV (also −125 mV on this L2 chip).
+
+**Important:** unlike the stock GPU UV (−12.5 mV limit), the OC voltage sweep has much more
+headroom because:
+1. The 600 MHz OPP is a separate node — patching it does NOT lower the 400/480/520 MHz OPPs.
+2. The stock UV limit was caused by the 400 MHz OPP approaching the PMIC floor (950 mV),
+   not by 520 MHz itself needing 1087.5 mV minimum.
+
+**Crash behavior at 1012.5 mV:** visual artifacts (rendering errors), FPS drop to 13.
+The device boots normally because the GPU starts at 400 MHz — the crash only occurs when
+devfreq scales to 600 MHz under load. Safety service does NOT trigger (boot succeeds).
+Recovery: patch DTB back to 1025 mV without reboot (`fdtput` over SSH), no SD card needed.
 
 ---
 

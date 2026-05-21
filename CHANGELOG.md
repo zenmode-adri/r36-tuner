@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.4 — 2026-05-21
+
+**Research: GPU OC 600 MHz — complete voltage sweep (L2 bin):**
+- Full undervolt sweep from 1150 mV down to 1012.5 mV in 12.5 mV steps (on-screen, ES stopped, 30–90s terrain)
+- Confirmed stable limit: **1025 mV** (−125 mV from PMIC max) — 15 fps on-screen, no artifacts
+- Artifacts at: 1012.5 mV (rendering errors, fps drop to 13) — do not use
+- Total undervolt: −125 mV — same silicon margin as CPU UV on this L2 chip
+- Key insight: OC has much more voltage headroom than stock GPU UV because the 600 MHz OPP is isolated — patching it does NOT lower the 400/480/520 MHz OPPs (stock UV was limited by 400 MHz OPP approaching PMIC floor)
+- Crash behavior at 1012.5 mV: device boots fine (GPU starts at 400 MHz), artifacts appear only when devfreq scales to 600 MHz under load — safety service does NOT trigger
+- Recovery at any failed voltage: patch DTB via SSH without reboot (`fdtput` to restore 1025 mV)
+- Updated `docs/opp-research.md` with complete sweep table and analysis
+- SSH now auto-starts at boot (`systemctl enable ssh.service`) — no manual activation needed
+
 ## v3.3 — 2026-05-21
 
 **Feat: RAM OC 928 MHz — DTBDMCOC() integrated into DTB menu:**
