@@ -11,7 +11,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Offsets from -100 mV to +50 mV. Reboot required.
 - **CPU OC to 1608 MHz** — unlocks 1608 MHz by patching `rockchip,avs-scale` in the DTB (no kernel recompile needed). The PX30/RK3326 clock driver already contains 1608 MHz; it was being suppressed by the AVS mechanism at runtime.
 - **GPU OC to 600 MHz** — adds a 600 MHz OPP to the GPU OPP table in the DTB. The GPU composite clock uses GPLL/2 = 600 MHz exactly; no clock driver changes needed.
-- **RAM OC to 928 MHz** — adds a 928 MHz OPP to the DMC OPP table. ATF v0x105 supports the frequency and delivers 924 MHz (nearest PLL divisor). +18% RAM bandwidth over stock 786 MHz.
+- **RAM OC to 928 MHz** — adds a 928 MHz OPP to the DMC OPP table. ATF v0x105 supports the frequency and delivers 924 MHz (nearest PLL divisor). +21% read bandwidth over stock 786 MHz.
 - **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
@@ -151,12 +151,18 @@ After reboot, `available_frequencies` shows `528000000 666000000 786000000 92800
 
 **Benchmark results:**
 
-| Condition | DMC freq | terrain fps | Notes |
-|-----------|----------|-------------|-------|
-| Stock | 786 MHz (max) | 18 | dmc_ondemand scales under GPU load |
-| DMC OC | 924 MHz | 18 | terrain is compute-bound — no GPU fps change |
+Memory bandwidth (128 MB dd via `/dev/shm`, all DMC frequencies, L2 bin):
 
-Terrain shows no change because Mali-G31 at 600 MHz is compute-bound, not bandwidth-bound. Benefits are real in mixed CPU+GPU workloads: emulator JIT, texture streaming, ROM loading, save states.
+| DMC freq | Write MB/s | Read MB/s | Temp |
+|----------|-----------|----------|------|
+| 528 MHz  | 447       | 691      | 46°C |
+| 666 MHz  | 490       | 790      | 46°C |
+| 786 MHz (stock max) | 507 | 853 | 49°C |
+| **924 MHz (OC)**    | 490 | **1032** | 48°C |
+
+Read bandwidth: **+21%** over stock 786 MHz. Write is limited by the LPDDR4 memory controller turnaround characteristics and does not scale linearly with frequency.
+
+GPU terrain fps shows no change (18 fps at all DMC freqs) because Mali-G31 at 600 MHz is compute-bound, not bandwidth-bound. Benefits are real in mixed CPU+GPU workloads: emulator JIT, texture streaming, ROM loading, save states.
 
 > **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
 
