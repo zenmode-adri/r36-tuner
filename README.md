@@ -164,6 +164,24 @@ GPU terrain fps shows no change (18 fps at all DMC freqs) because Mali-G31 at 60
 
 > **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
 
+### Higher frequencies — tested and results
+
+Frequencies above 928 MHz were tested by adding OPP nodes to the DTB. ATF v0x105 accepted both but with different results:
+
+| Requested | ATF delivers | Result | Read MB/s |
+|-----------|-------------|--------|----------|
+| 928 MHz | **924 MHz** | Stable | 1076 |
+| 1000 MHz | **996 MHz** | Stable but slower | 1012 |
+| 1056 MHz | **1056 MHz** | Kernel panic under sustained load | — |
+
+**996 MHz is slower than 924 MHz** — ATF has timing tables for 996 MHz but they are more conservative than those for 924 MHz, resulting in lower effective bandwidth despite higher frequency.
+
+**1056 MHz crashes** under sustained memory-intensive workloads. `vdd_logic` is already at the PMIC hard limit (1150 mV) — no headroom to stabilize it with higher voltage.
+
+**Why we cannot push further:** LPDDR4 timing tables are embedded in Rockchip's closed DDR init binary (`px30_ddr_333MHz_v2.11.bin` in `rkbin`). Modifying them requires Rockchip's internal DDR training tools, which are not publicly available. The ATF BL31 source (available at [ARM-software/arm-trusted-firmware](https://github.com/ARM-software/arm-trusted-firmware)) does not contain the DDR timing data.
+
+**924 MHz (from 928 MHz OPP) is the confirmed stable ceiling** for this hardware.
+
 ## Emergency Recovery — Device Won't Boot
 
 If a DTB undervolt is too aggressive, the kernel may fail to boot entirely. The automatic safety service cannot help in this case (it runs in userspace). To recover manually:
