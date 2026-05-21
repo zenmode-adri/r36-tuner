@@ -178,9 +178,13 @@ Frequencies above 928 MHz were tested by adding OPP nodes to the DTB. ATF v0x105
 
 **1056 MHz crashes** under sustained memory-intensive workloads. `vdd_logic` is already at the PMIC hard limit (1150 mV) — no headroom to stabilize it with higher voltage.
 
-**Why we cannot push further:** LPDDR4 timing tables are embedded in Rockchip's closed DDR init binary (`px30_ddr_333MHz_v2.11.bin` in `rkbin`). Modifying them requires Rockchip's internal DDR training tools, which are not publicly available. The ATF BL31 source (available at [ARM-software/arm-trusted-firmware](https://github.com/ARM-software/arm-trusted-firmware)) does not contain the DDR timing data.
+**Why voltage cannot stabilize 1056 MHz:** `vdd_logic` (shared rail for GPU + DMC + SoC logic) is already at **1150 mV** — the RK805 PMIC hard limit for DCDC_REG1. There is no headroom. Even if voltage were available, the root cause is not voltage but timing tables.
 
-**924 MHz (from 928 MHz OPP) is the confirmed stable ceiling** for this hardware.
+**Why timing tables are the real bottleneck:** 996 MHz (from 1000 MHz OPP) was stable but *slower* than 924 MHz (1012 vs 1076 MB/s). If voltage were the limiting factor, 996 MHz would be faster than 924 MHz since it has more headroom at 1150 mV. The fact that it is slower proves ATF's internal timing tables for 996 MHz are more conservative than those for 924 MHz — higher voltage cannot fix incorrect or relaxed timings.
+
+**Why we cannot modify the timing tables:** LPDDR4 timing parameters (tCL, tRCD, tRP, tRAS, etc.) are embedded in Rockchip's closed DDR init binary (`px30_ddr_333MHz_v2.11.bin` in `rkbin`). Modifying them requires Rockchip's internal DDR training tools, which are not publicly available. The ATF BL31 source (available at [ARM-software/arm-trusted-firmware](https://github.com/ARM-software/arm-trusted-firmware)) does not contain the DDR timing data — it is a separate binary blob loaded alongside BL31.
+
+**924 MHz is not just the stability limit — it is the performance optimum.** ATF has the best-calibrated timing tables for this frequency on this SoC. Going higher yields worse real-world bandwidth despite the higher clock.
 
 ## Emergency Recovery — Device Won't Boot
 
