@@ -84,7 +84,6 @@ Rail: `vdd_logic` (shared with GPU and SoC logic) · Node: `/dmc-opp-table` · *
 | 528 | 975  | 975  | **950**  | 950  |
 | 666 | 1050 | 1000 | **975**  | 950  |
 | 786 | 1100 | 1050 | **1025** | 1000 |
-| **928** | — | — | **1075** | — |
 
 > DMC shares `vdd_logic` with the GPU — the PMIC always sets the rail to the highest voltage demanded by any consumer. Patching DMC voltages lower has marginal effect and risks DDR instability (random crashes, data corruption).
 >
