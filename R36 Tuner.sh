@@ -1442,6 +1442,8 @@ DTBRAMOC() {
 
 MonitorMenu() {
     local PREV_TEMP="" TREND="→"
+    printf '\033[2J\033[H' >"$CURR_TTY"
+
     while true; do
         local TEMP; TEMP=$(GetTempC)
         if [[ "$TEMP" =~ ^[0-9]+$ ]] && [[ "$PREV_TEMP" =~ ^[0-9]+$ ]]; then
@@ -1454,36 +1456,39 @@ MonitorMenu() {
         local TEMP_DISP="${TEMP}°C ${TREND}"
         [[ "$TEMP" =~ ^[0-9]+$ ]] && [ "$TEMP" -ge 80 ] && TEMP_DISP="${TEMP}°C ${TREND} [HOT!]"
 
-        local INFO
-        INFO=$(printf \
-"╔══════════ R36 TUNER MONITOR ══════════╗
-║ Temperature : %-16s           ║
-╠════════════════ CPU ═══════════════════╣
-║ Cur / Max   : %-6s / %-6s MHz     ║
-║ Min Freq    : %-6s MHz                ║
-║ Voltage     : %-10s                ║
-║ Governor    : %-15s           ║
-╠════════════════ GPU ═══════════════════╣
-║ Cur / Max   : %-6s / %-6s MHz     ║
-║ Voltage     : %-10s                ║
-╠══════════════ DMC / RAM ═══════════════╣
-║ Cur / Max   : %-6s / %-6s MHz     ║
-║ Voltage     : %-10s                ║
-╚═══════════════════════════════════════╝" \
-            "$TEMP_DISP" \
-            "$(GetCPUCurMHz)" "$(GetCPUMaxMHz)" \
-            "$(GetCPUMinMHz)" \
-            "$(GetRegVoltMV "$VDD_ARM") mV" "$(GetGOV)" \
-            "$(GetGPUCurMHz)" "$(GetGPUMaxMHz)" \
-            "$(GetRegVoltMV "$VDD_LOGIC") mV" \
-            "$(GetDMCCurMHz)" "$(GetDMCMaxMHz)" \
-            "$(GetRegVoltMV "$VCC_DDR") mV")
+        {
+            printf '\033[H'
+            printf \
+"╔══════════ R36 TUNER MONITOR ══════════╗\n\
+║ Temperature : %-16s           ║\n\
+╠════════════════ CPU ═══════════════════╣\n\
+║ Cur / Max   : %-6s / %-6s MHz     ║\n\
+║ Min Freq    : %-6s MHz                ║\n\
+║ Voltage     : %-10s                ║\n\
+║ Governor    : %-15s           ║\n\
+╠════════════════ GPU ═══════════════════╣\n\
+║ Cur / Max   : %-6s / %-6s MHz     ║\n\
+║ Voltage     : %-10s                ║\n\
+╠══════════════ DMC / RAM ═══════════════╣\n\
+║ Cur / Max   : %-6s / %-6s MHz     ║\n\
+║ Voltage     : %-10s                ║\n\
+╚═══════════════════════════════════════╝\n\
+\n\
+  [ any button → back ]\n" \
+                "$TEMP_DISP" \
+                "$(GetCPUCurMHz)" "$(GetCPUMaxMHz)" \
+                "$(GetCPUMinMHz)" \
+                "$(GetRegVoltMV "$VDD_ARM") mV" "$(GetGOV)" \
+                "$(GetGPUCurMHz)" "$(GetGPUMaxMHz)" \
+                "$(GetRegVoltMV "$VDD_LOGIC") mV" \
+                "$(GetDMCCurMHz)" "$(GetDMCMaxMHz)" \
+                "$(GetRegVoltMV "$VCC_DDR") mV"
+        } >"$CURR_TTY"
 
-        dialog --backtitle "$BACKTITLE" \
-               --title "[ MONITOR — any button to exit ]" \
-               --infobox "$INFO" 19 53 > "$CURR_TTY"
-        read -r -s -t 0.5 -n 1 _ < "$CURR_TTY" 2>/dev/null && break
+        read -r -s -t 0.5 -n 1 _ <"$CURR_TTY" 2>/dev/null && break
     done
+
+    printf '\033[2J\033[H' >"$CURR_TTY"
 }
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
@@ -1948,12 +1953,11 @@ MainMenu() {
         local PROF_STATUS="off"
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
-        CHOICE=$(dialog --backtitle "$BACKTITLE" \
-                        --title "[ R36 Tuner v${VERSION} ]" \
+        CHOICE=$(dialog --no-shadow --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
-                        --menu "Temp: $(GetTempC)°C  CPU: $(GetCPUMaxMHz)MHz  GPU: $(GetGPUMaxMHz)MHz  arm: ${ARM_MV}mV" \
-                        20 56 12 \
+                        --menu "Temp: $(GetTempC)°C        CPU: $(GetCPUMaxMHz) MHz\narm:  ${ARM_MV} mV         GPU: $(GetGPUMaxMHz) MHz\nlogic: $(GetRegVoltMV "$VDD_LOGIC") mV    DMC: $(GetDMCMaxMHz) MHz\n" \
+                        21 58 12 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
