@@ -1949,15 +1949,14 @@ ExitMenu() {
 
 MainMenu() {
     while true; do
-        local ARM_MV; ARM_MV=$(GetRegVoltMV "$VDD_ARM")
         local PROF_STATUS="✗ off"
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
         CHOICE=$(dialog --no-shadow --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
-                        --menu "CPU: $(GetCPUMaxMHz) MHz  ${ARM_MV}mV   GPU: $(GetGPUMaxMHz) MHz  $(GetRegVoltMV "$VDD_LOGIC")mV\nRAM: $(GetDMCMaxMHz) MHz   gov: $(GetGOV)" \
-                        21 58 11 \
+                        --menu "" \
+                        19 58 11 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
