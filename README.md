@@ -111,7 +111,7 @@ The RK3326 clock driver already contains 1608 MHz in `px30_cpuclk_rates` and `px
 1. Add `opp-1608000000` node to `/cpu0-opp-table` with desired voltage.
 2. Set `rockchip,avs-scale` from `4` to `0` — disables the AVS OPP stripping.
 
-Practical gain of 1608 over 1512 MHz: **+1.6%** (ALU benchmark). The sweet spot remains **1512 MHz @ 1175 mV** (undervolted). GPU-bound workloads show no difference at any CPU frequency. Full benchmark table in [docs/opp-research.md](docs/opp-research.md).
+Measured ALU gain of 1608 over 1512 MHz: **+1.6%** — likely an underestimate (1608/1512 = +6.3% more cycles; the gap suggests thermal or governor interference during the 10s test). Real-world gain for emulation (JIT + memory accesses) is probably somewhere between +1.6% and +6%. Either way, **1608 MHz is a modest step over 1512 MHz**. The bigger win is undervolting 1512 MHz to 1175 mV. GPU-bound workloads show no difference at any CPU frequency. Full benchmark table in [docs/opp-research.md](docs/opp-research.md).
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
 
