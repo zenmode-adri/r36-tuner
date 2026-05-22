@@ -1481,8 +1481,8 @@ MonitorMenu() {
 
         dialog --backtitle "$BACKTITLE" \
                --title "[ MONITOR — any button to exit ]" \
-               --infobox "$INFO" 22 55 > "$CURR_TTY"
-        read -r -s -t 2 -n 1 _ < "$CURR_TTY" 2>/dev/null && break
+               --infobox "$INFO" 19 53 > "$CURR_TTY"
+        read -r -s -t 0.5 -n 1 _ < "$CURR_TTY" 2>/dev/null && break
     done
 }
 
@@ -1949,11 +1949,11 @@ MainMenu() {
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
         CHOICE=$(dialog --backtitle "$BACKTITLE" \
-                        --title "[ MAIN MENU ]" \
+                        --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
                         --menu "Temp: $(GetTempC)°C  CPU: $(GetCPUMaxMHz)MHz  GPU: $(GetGPUMaxMHz)MHz  arm: ${ARM_MV}mV" \
-                        22 68 12 \
+                        20 56 12 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
