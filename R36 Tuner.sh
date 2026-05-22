@@ -279,6 +279,7 @@ if [ -f "$PENDING" ]; then
     mv "$PENDING" "$BOOTING"
     sync
 fi
+exit 0
 SAFETYEOF
     chmod +x "$DTB_SAFETY_SCRIPT"
 
