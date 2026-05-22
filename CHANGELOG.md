@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.6 — 2026-05-22
+
+**Bug fixes and UI polish for final release:**
+- Fix: GPU OC voltage menu showed "Stock 520 MHz = ? mV" — was reading undefined variable `$OPP_BIN_PROP` instead of `$GPU_BIN_PROP` (display-only bug, patch logic was correct)
+- Fix: Benchmark history header showed wrong unit "MB/s" for CPU score (correct: Mops/10s)
+- Fix: Benchmark menu item 1 label said "sha256" — benchmark is int ALU (C, LCG), sha256 was removed in v2.9
+- Safety: added `sync` after all DTB fdtput operations (5 functions) — prevents losing patch data if device loses power before manual reboot
+- UI: all user-facing text unified to English (was inconsistently mixed EN/ES)
+
 ## v3.5 — 2026-05-21
 
 **Full voltage range in all OC/UV menus — no hardcoded limits:**

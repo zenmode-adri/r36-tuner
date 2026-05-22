@@ -361,7 +361,7 @@ DTBGPUUndervoltMenu() {
     fi
     if [ -z "$GPU_OPP" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
-            --msgbox "GPU OPP table not found in DTB.\n\nBuscado: /gpu-opp-table y variantes." 8 50 > "$CURR_TTY"
+            --msgbox "GPU OPP table not found in DTB.\n\nSearched: /gpu-opp-table and variants." 8 50 > "$CURR_TTY"
         return
     fi
 
@@ -396,7 +396,7 @@ DTBGPUUndervoltMenu() {
 
     local N="${#GPU_NODES[@]}"
     local BIN_INFO="opp-microvolt"; [ -n "$GPU_BIN" ] && BIN_INFO="opp-microvolt-${GPU_BIN} (bin: ${GPU_BIN})"
-    local TABLE="GPU: ${GPU_OPP}  |  ${BIN_INFO}\n\nVoltajes actuales:\n"
+    local TABLE="GPU: ${GPU_OPP}  |  ${BIN_INFO}\n\nCurrent voltages:\n"
     for (( i=0; i<N; i++ )); do
         local mv=$(( GPU_VOLTS_UV[i] / 1000 ))
         TABLE+="  ${GPU_FREQS_MHZ[i]} MHz  →  ${mv} mV\n"
@@ -406,10 +406,10 @@ DTBGPUUndervoltMenu() {
     local PATCH_MODE
     PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — MODO ]" \
         --ok-label "Select" --cancel-label "Back" \
-        --menu "${TABLE}\nSelecciona modo:" \
+        --menu "${TABLE}\nSelect mode:" \
         26 60 2 \
-        "uniform" "Uniform — mismo offset para todos los OPPs" \
-        "fine"    "Fine tune — por OPP, pasos 12.5 mV" \
+        "uniform" "Uniform — same offset for all OPPs" \
+        "fine"    "Fine tune — per OPP, 12.5 mV steps" \
         2>&1 > "$CURR_TTY")
     [ -z "$PATCH_MODE" ] && return
 
@@ -425,13 +425,13 @@ DTBGPUUndervoltMenu() {
             local sign; [ $o -lt 0 ] && sign="-" || sign="+"
             local w=$(( abs / 1000 )); local f=$(( abs % 1000 ))
             local lbl; [ $f -eq 500 ] && lbl="${sign}${w}.5 mV" || lbl="${sign}${w} mV"
-            [ $o -eq 0 ] && lbl="0 mV  (sin cambio)"
+            [ $o -eq 0 ] && lbl="0 mV  (no change)"
             OFF_ITEMS+=("$o" "$lbl")
             o=$(( o - 12500 ))
         done
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — UNIFORM ]" \
-            --menu "Aplicado a los ${N} OPPs  |  Step: 12.5 mV\nFloor hardware: 950 mV (vdd_logic PMIC min)\nStart conservative — go down gradually." \
+            --menu "Applied to ${N} OPPs  |  Step: 12.5 mV\nFloor: 950 mV (vdd_logic PMIC min)\nStart conservative — go down gradually." \
             20 62 10 \
             "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
@@ -456,7 +456,7 @@ DTBGPUUndervoltMenu() {
                 local whole=$(( abs_uv / 1000 )); local frac=$(( abs_uv % 1000 ))
                 local off_label
                 if [ "$off_uv" -eq 0 ]; then
-                    off_label="sin cambio"
+                    off_label="unchanged"
                 elif [ "$frac" -eq 500 ]; then
                     off_label="${sign}${whole}.5mV → ${new_str}mV"
                 else
@@ -464,12 +464,12 @@ DTBGPUUndervoltMenu() {
                 fi
                 FTCHOICES+=("$i" "${GPU_FREQS_MHZ[i]} MHz: ${cur_mv}mV  [${off_label}]")
             done
-            FTCHOICES+=("done" "── Aplicar estos offsets ──")
+            FTCHOICES+=("done" "── Apply these offsets ──")
 
             local FT_SEL
-            FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ GPU FINE TUNE — SELECCIONA OPP ]" \
-                --ok-label "Ajustar" --cancel-label "Cancelar" \
-                --menu "Selecciona frecuencia a ajustar:" \
+            FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ GPU FINE TUNE — SELECT OPP ]" \
+                --ok-label "Tune" --cancel-label "Cancel" \
+                --menu "Select frequency to tune:" \
                 20 65 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
@@ -488,7 +488,7 @@ DTBGPUUndervoltMenu() {
                 local sign2; [ $fo -lt 0 ] && sign2="-" || sign2="+"
                 local w2=$(( abs2 / 1000 )); local f2=$(( abs2 % 1000 ))
                 local lbl2; [ $f2 -eq 500 ] && lbl2="${sign2}${w2}.5 mV" || lbl2="${sign2}${w2} mV"
-                [ $fo -eq 0 ] && lbl2="0 mV  (sin cambio)"
+                [ $fo -eq 0 ] && lbl2="0 mV  (no change)"
                 FT_OFF_ITEMS+=("$fo" "$lbl2")
                 fo=$(( fo - 12500 ))
             done
@@ -496,7 +496,7 @@ DTBGPUUndervoltMenu() {
             FREQ_OFFSET=$(dialog --backtitle "$BACKTITLE" \
                 --title "[ GPU FINE TUNE — ${GPU_FREQS_MHZ[$IDX]} MHz ]" \
                 --default-item "$cur_off" \
-                --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelecciona offset:" \
+                --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelect offset:" \
                 20 60 10 \
                 "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
@@ -521,12 +521,12 @@ DTBGPUUndervoltMenu() {
         local new_frac=$(( new_uv % 1000 ))
         local new_str="${new_mv}"; [ "$new_frac" -eq 500 ] && new_str="${new_mv}.5"
         if [ "$off_uv" -eq 0 ]; then
-            PREVIEW+="  ${GPU_FREQS_MHZ[i]} MHz: ${mv} mV  (sin cambio)\n"
+            PREVIEW+="  ${GPU_FREQS_MHZ[i]} MHz: ${mv} mV  (unchanged)\n"
         else
             PREVIEW+="  ${GPU_FREQS_MHZ[i]} MHz: ${mv} → ${new_str} mV\n"
         fi
     done
-    local BAK_NOTE; [ -f "${DTB}.bak" ] && BAK_NOTE="Backup: ${DTB}.bak (existente)" || BAK_NOTE="Backup: ${DTB}.bak (se creará)"
+    local BAK_NOTE; [ -f "${DTB}.bak" ] && BAK_NOTE="Backup: ${DTB}.bak (existing)" || BAK_NOTE="Backup: ${DTB}.bak (will create)"
     PREVIEW+="\n${BAK_NOTE}  |  Reboot required."
 
     dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — CONFIRM ]" \
@@ -534,9 +534,9 @@ DTBGPUUndervoltMenu() {
     [ $? -ne 0 ] && return
 
     if [ ! -f "${DTB}.bak" ]; then
-        cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup fallido. Abortando." 5 40 > "$CURR_TTY"; return; }
+        cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
     fi
-    dialog --infobox "Parcheando GPU DTB..." 4 35 > "$CURR_TTY"
+    dialog --infobox "Patching GPU DTB..." 4 35 > "$CURR_TTY"
 
     local FAIL=0
     for (( i=0; i<N; i++ )); do
@@ -556,14 +556,15 @@ DTBGPUUndervoltMenu() {
     done
 
     if [ $FAIL -eq 0 ]; then
+        sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
-        dialog --backtitle "$BACKTITLE" --title "✓ GPU DTB Parchada" \
-            --yesno "GPU parchada correctamente.\nBackup: ${DTB}.bak\n\nSafety net activo: si el boot cuelga,\nel siguiente boot restaura el DTB original.\n\n¿Reiniciar ahora?" 11 54 > "$CURR_TTY"
+        dialog --backtitle "$BACKTITLE" --title "✓ GPU Undervolt Patched" \
+            --yesno "GPU patched successfully.\nBackup: ${DTB}.bak\n\nSafety net active: if boot hangs,\nnext boot auto-restores original DTB.\n\nReboot now?" 11 54 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
-            --msgbox "Patch fallido. Restaurando backup..." 6 45 > "$CURR_TTY"
+            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
 }
@@ -742,7 +743,7 @@ VoltageMenu() {
 
     dialog --backtitle "$BACKTITLE" \
            --title "[ VOLTAGE INFO ]" \
-           --msgbox "Runtime voltages (read-only — OPP framework owns these rails):\n\nvdd_arm   — CPU cores  : ${ARM_MV} mV\nvdd_logic — SoC / GPU  : ${LOGIC_MV} mV\nvcc_ddr   — RAM        : ${DDR_MV} mV\n\nPara cambiar voltajes permanentemente:\n  → DTB Undervolt (menú anterior)" \
+           --msgbox "Runtime voltages (read-only — OPP framework owns these rails):\n\nvdd_arm   — CPU cores  : ${ARM_MV} mV\nvdd_logic — SoC / GPU  : ${LOGIC_MV} mV\nvcc_ddr   — RAM        : ${DDR_MV} mV\n\nTo change voltages permanently:\n  → DTB Undervolt (previous menu)" \
            14 58 > "$CURR_TTY"
 }
 
@@ -1131,6 +1132,7 @@ else: print('?')
     done
 
     if [ $FAIL -eq 0 ]; then
+        sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ DTB Patched" \
@@ -1211,6 +1213,7 @@ DTBCPUOC() {
     fdtput -t u "$DTB" "$OPP_BASE" "rockchip,avs-scale" 0 2>/dev/null || FAIL=1
 
     if [ $FAIL -eq 0 ]; then
+        sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ OC Patched" \
@@ -1277,7 +1280,7 @@ DTBGPUOC() {
     [ $? -ne 0 ] && return
 
     # Voltage selection — full vdd_logic range 950–1150 mV, 12.5 mV steps
-    local STOCK_GPU_MV; STOCK_GPU_MV=$(fdtget -t u "$DTB" "${GPU_OPP}/opp-520000000" "$OPP_BIN_PROP" 2>/dev/null | awk '{print int($1/1000)}')
+    local STOCK_GPU_MV; STOCK_GPU_MV=$(fdtget -t u "$DTB" "${GPU_OPP}/opp-520000000" "$GPU_BIN_PROP" 2>/dev/null | awk '{print int($1/1000)}')
     [ -z "$STOCK_GPU_MV" ] && STOCK_GPU_MV="?"
     local -a VOLT_ITEMS=()
     local v=1150000
@@ -1322,6 +1325,7 @@ DTBGPUOC() {
         fdtput -t u "$DTB" "$GPU_OPP/opp-600000000" opp-microvolt $VOLT_UV 2>/dev/null
 
     if [ $FAIL -eq 0 ]; then
+        sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ GPU OC Patched" \
@@ -1414,6 +1418,7 @@ DTBRAMOC() {
         fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-microvolt 1100000 2>/dev/null
 
     if [ $FAIL -eq 0 ]; then
+        sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ DMC OC Patched" \
@@ -1577,14 +1582,14 @@ InstallGlmark2Legacy() {
     [ -x "$dst" ] && [ -d "$data_dst/shaders" ] && return 0
 
     dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
-        --infobox "Preparando glmark2 on-screen (~5s)..." 4 50 > "$CURR_TTY"
+        --infobox "Preparing glmark2 on-screen (~5s)..." 4 50 > "$CURR_TTY"
 
     if [ ! -x "$dst" ]; then
         awk '/^# __GLMARK2_LEGACY_START__$/{f=1;next} /^# __GLMARK2_LEGACY_END__$/{f=0} f' "$0" \
             | base64 -d > "$dst"
         if [ ! -s "$dst" ]; then
             dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
-                --msgbox "Error extrayendo binario legacy." 5 45 > "$CURR_TTY"
+                --msgbox "Error extracting legacy binary." 5 45 > "$CURR_TTY"
             rm -f "$dst"; return 1
         fi
         chmod +x "$dst"
@@ -1603,7 +1608,7 @@ InstallGlmark2Legacy() {
 
 InstallGlmark2() {
     dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 ]" \
-        --infobox "Instalando glmark2-es2-drm (bundled, sin wifi)...\nEspera ~20s" 5 58 > "$CURR_TTY"
+        --infobox "Installing glmark2-es2-drm (bundled, no wifi)...\nPlease wait ~20s" 5 58 > "$CURR_TTY"
     local tmp_bin="/tmp/glmark2-es2-drm.deb"
     local tmp_data="/tmp/glmark2-data.deb"
     awk '/^# __GLMARK2_BIN_START__$/{f=1;next} /^# __GLMARK2_BIN_END__$/{f=0} f' "$0" \
@@ -1612,7 +1617,7 @@ InstallGlmark2() {
         | base64 -d > "$tmp_data"
     if [ ! -s "$tmp_bin" ] || [ ! -s "$tmp_data" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 ]" \
-            --msgbox "Error extrayendo paquetes embebidos." 5 45 > "$CURR_TTY"
+            --msgbox "Error extracting bundled packages." 5 45 > "$CURR_TTY"
         rm -f "$tmp_bin" "$tmp_data"
         return 1
     fi
@@ -1625,14 +1630,14 @@ InstallGlmark2() {
 BenchmarkGPU() {
     if ! command -v glmark2-es2-drm >/dev/null 2>&1; then
         dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-            --yesno "glmark2-es2-drm no encontrado.\n¿Instalar desde paquete bundled (~20s)?" 7 52 > "$CURR_TTY"
+            --yesno "glmark2-es2-drm not found.\nInstall from bundled package (~20s)?" 7 52 > "$CURR_TTY"
         [ $? -ne 0 ] && return
         InstallGlmark2 || { dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-            --msgbox "Instalación fallida.\nInstala manualmente: apt install glmark2-es2-drm" 7 52 > "$CURR_TTY"; return 1; }
+            --msgbox "Install failed.\nManual install: apt install glmark2-es2-drm" 7 52 > "$CURR_TTY"; return 1; }
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --yesno "GPU benchmark (glmark2-es2-drm --off-screen).\nDuración: ~1 min. Pantalla negra — normal.\nResultado aparece al volver al menú.\n\n¿Continuar?" 10 58 > "$CURR_TTY"
+        --yesno "GPU benchmark (glmark2-es2-drm --off-screen).\nDuration: ~1 min. Black screen — normal.\nResult shown on next menu open.\n\nContinue?" 10 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
@@ -1658,11 +1663,11 @@ if [ -n "$SCORE" ]; then
     TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
     SCENES=$(grep "^\[" "$GL_LOG" | awk '{print $1, $NF}' | tr '\n' '\n')
     echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
-    printf "GPU Score: %s pts\nGPU: %sMHz  Temp: %sC\n\n%s\nGuardado en historial." \
+    printf "GPU Score: %s pts\nGPU: %sMHz  Temp: %sC\n\n%s\nSaved to history." \
         "$SCORE" "$GPU_MHZ" "$TEMP" "$SCENES" > "$PENDING"
 else
     ERR=$(grep -i "error\|failed\|warning" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
-    printf "GPU bench fallido.\n\n%s" "$ERR" > "$PENDING"
+    printf "GPU bench failed.\n\n%s" "$ERR" > "$PENDING"
 fi
 
 systemctl start emulationstation 2>/dev/null
@@ -1686,7 +1691,7 @@ systemctl daemon-reload
 systemctl start r36-gpu-bench' 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --infobox "GPU bench iniciado (~1 min).\nPantalla negra mientras corre.\nVuelve al menú para ver resultado." 7 52 > "$CURR_TTY"
+        --infobox "GPU bench started (~1 min).\nScreen goes black — normal.\nOpen menu again to see result." 7 52 > "$CURR_TTY"
     sleep 4
 }
 
@@ -1707,7 +1712,7 @@ BenchmarkViewHistory() {
     local BASE=""
     [ -f "$BASELINE_FILE" ] && BASE=$(cat "$BASELINE_FILE" 2>/dev/null)
     local HEADER="CPU Score History"
-    [ -n "$BASE" ] && HEADER+="  (baseline: ${BASE} MB/s = 100%)"
+    [ -n "$BASE" ] && HEADER+="  (baseline: ${BASE} Mops = 100%)"
     local TMPFILE; TMPFILE=$(mktemp)
     cat "$SCORES_FILE" > "$TMPFILE"
     dialog --backtitle "$BACKTITLE" --title "[ $HEADER ]" \
@@ -1802,11 +1807,11 @@ ValidateGPUUndervolt() {
     local LEGACY_BIN="/tmp/glmark2-es2-drm-legacy"
     local DTB_ST; DTB_ST=$(GetDTBStatus)
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
-        --yesno "Test GPU undervolt — terrain ON-SCREEN (~30s).\n\nDTB: ${DTB_ST}\nPantalla mostrará gráfico 3D giratorio.\nArtifacts / freeze / crash = inestable.\n\n¿Continuar?" 11 58 > "$CURR_TTY"
+        --yesno "Test GPU undervolt — terrain ON-SCREEN (~30s).\n\nDTB: ${DTB_ST}\nScreen shows spinning 3D terrain.\nArtifacts / freeze / crash = unstable.\n\nContinue?" 11 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
-        --infobox "Parando EmulationStation...\nGlmark2 terrain on-screen ~30s." 5 50 > "$CURR_TTY"
+        --infobox "Stopping EmulationStation...\nGlmark2 terrain on-screen ~30s." 5 50 > "$CURR_TTY"
     sleep 2
     echo ark | sudo -S systemctl stop emulationstation 2>/dev/null
     sleep 2
@@ -1827,14 +1832,14 @@ ValidateGPUUndervolt() {
     if [ -n "$FPS" ]; then
         echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  DTB=${DTB_ST}  GPU=${GPU_MHZ}MHz  temp=${TEMP}C" >> "$SCORES_FILE"
         local VERDICT="STABLE"
-        [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps muy bajo)"
-        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULTADO ]" \
-            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVeredicto: ${VERDICT}\n\nBaseline stock: ~14 fps on-screen / ~16 fps off-screen\nArtifacts / freeze / crash = inestable.\n\nResultado guardado en historial." \
+        [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
+        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULT ]" \
+            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVerdict: ${VERDICT}\n\nBaseline stock: ~14 fps on-screen / ~16 fps off-screen\nArtifacts / freeze / crash = unstable.\n\nSaved to history." \
             15 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
-        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — FALLIDO ]" \
-            --msgbox "glmark2 terrain fallido.\n\n${ERR}" 9 56 > "$CURR_TTY"
+        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — FAILED ]" \
+            --msgbox "glmark2 terrain failed.\n\n${ERR}" 9 56 > "$CURR_TTY"
     fi
     rm -f "$GL_LOG"
 }
@@ -1847,13 +1852,13 @@ BenchmarkMenu() {
                     --cancel-label "Back" \
                     --menu "Select test to run" \
                     22 62 10 \
-                    1  "CPU           — sha256                (~60s)" \
+                    1  "CPU           — int ALU               (~10s)" \
                     2  "RAM           — 128MB r/w             (~8s)" \
                     3  "GPU           — glmark2-es2-drm        (~1min)" \
                     4  "All           — CPU + RAM + GPU" \
                     5  "CPU Stress    — 5min full load, abort 85°C" \
-                    6  "Validate CPU  — benchmark + stress + veredicto" \
-                    7  "Validate GPU UV — terrain ~30s + recomendación" \
+                    6  "Validate CPU  — benchmark + stress + verdict" \
+                    7  "Validate GPU UV — terrain ~30s + verdict" \
                     8  "Set Baseline  — mark next CPU run as 100%" \
                     9  "View History  — scrollable, all entries" \
                     10 "Clear History — delete log and baseline" \
