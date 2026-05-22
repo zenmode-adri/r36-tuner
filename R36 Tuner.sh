@@ -1480,9 +1480,9 @@ MonitorMenu() {
             "$(GetRegVoltMV "$VCC_DDR") mV")
 
         dialog --backtitle "$BACKTITLE" \
-               --title "[ MONITOR — press Cancel to exit ]" \
-               --pause "$INFO" 22 55 2 > "$CURR_TTY"
-        [ $? -ne 0 ] && break
+               --title "[ MONITOR — any button to exit ]" \
+               --infobox "$INFO" 22 55 > "$CURR_TTY"
+        read -r -s -t 2 -n 1 _ < "$CURR_TTY" 2>/dev/null && break
     done
 }
 
