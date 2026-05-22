@@ -1956,7 +1956,7 @@ MainMenu() {
                         --ok-label "Select" \
                         --cancel-label "Exit" \
                         --menu "" \
-                        18 58 11 \
+                        17 58 11 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
