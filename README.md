@@ -8,7 +8,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - CPU governor selector (performance / schedutil / ondemand / conservative / powersave)
 - GPU max frequency selection
 - DMC / RAM max frequency selection
-- **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Offsets from -100 mV to +50 mV. Reboot required.
+- **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Uniform mode (−200 mV to +50 mV in 12.5 mV steps) or fine-tune per OPP. Reboot required.
 - **CPU OC to 1608 MHz** — unlocks 1608 MHz by patching `rockchip,avs-scale` in the DTB (no kernel recompile needed). The PX30/RK3326 clock driver already contains 1608 MHz; it was being suppressed by the AVS mechanism at runtime.
 - **GPU OC to 600 MHz** — adds a 600 MHz OPP to the GPU OPP table in the DTB. The GPU composite clock uses GPLL/2 = 600 MHz exactly; no clock driver changes needed.
 - **RAM OC to 928 MHz** — adds a 928 MHz OPP to the DMC OPP table. ATF v0x105 supports the frequency and delivers 924 MHz (nearest PLL divisor). +11% read bandwidth over stock 786 MHz (measured, CPU pinned, 5-run average).
@@ -43,15 +43,15 @@ The RK3326 OPP framework owns all voltage regulators — runtime sysfs writes ar
 
 This device uses Rockchip OPP binning (`pvtm-volt-sel`). At boot, the kernel selects a voltage bin based on chip leakage measurement. Most R36S units land on **L2**. The tuner detects the active bin from `dmesg` and patches the correct property (`opp-microvolt-L2`).
 
-Tested results on L2 bin (our test unit — your bin may differ, check dmesg):
+Tested results on L2 bin (your bin may differ — check dmesg):
 
-| Component | Stock L2 @ max freq | Stable limit | Result |
-|-----------|---------------------|--------------|--------|
-| CPU (vdd_arm) | 1300 mV @ 1512 MHz | **−125 mV → 1175 mV** | ✅ Long-term stable |
-| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV → 1087.5 mV** | ✅ Stable (vdd_logic shared with SoC logic — tight margin) |
-| RAM/DMC (vdd_logic) | — | not recommended | ⚠️ Shares vdd_logic with GPU — benefit marginal, risk high |
+| Component | Stock L2 @ max freq | Stable limit |
+|-----------|---------------------|--------------|
+| CPU (vdd_arm) | 1300 mV @ 1512 MHz | **−125 mV → 1175 mV** ✅ |
+| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV uniform / up to −150 mV fine-tune** (520 MHz → 950 mV, 480 MHz → 962.5 mV) ✅ |
+| RAM/DMC (vdd_logic) | — | not recommended ⚠️ (shares vdd_logic; see [RAM OC](#ram-oc--928-mhz)) |
 
-> **DMC OC is separate from DMC undervolt** — see [RAM OC — 928 MHz](#ram-oc--928-mhz) below.
+Full test sweep data in [docs/opp-research.md](docs/opp-research.md).
 
 ### CPU voltage table — all bins (mV)
 
@@ -96,28 +96,13 @@ For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-
 
 The GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` exactly. No GPU rate table exists in the driver — the only limit was the OPP table. Adding a `opp-600000000` node is sufficient.
 
-**Voltage (conservative start):** 1150 mV — the PMIC hard limit for `vdd_logic`. Start here and reduce in 12.5 mV steps.
+**Voltage:** start at 1150 mV (PMIC hard limit for `vdd_logic`) and reduce in 12.5 mV steps. Confirmed stable floor for L2 bin: **1025 mV (−125 mV)**. Artifacts at 1012.5 mV. Silicon lottery — your chip may differ.
 
-**Undervolt sweep results (L2 bin, leakage=13):**
+**Result (L2 bin, off-screen terrain):** 520 MHz @ 1087.5 mV → 15 fps · 600 MHz @ 1025 mV → **18 fps (+20%)** at 47°C.
 
-| Voltage | terrain fps | Temp | Status |
-|---|---|---|---|
-| 1150 mV | 15 | 56°C | stable (start here) |
-| 1025 mV | 15 | 47°C | **stable — confirmed limit for this chip** |
-| 1012.5 mV | 13 | 50°C | artifacts — physical limit |
+For the full voltage sweep table and analysis see [docs/opp-research.md](docs/opp-research.md).
 
-**Stable floor for this chip: 1025 mV = −125 mV from the initial 1150 mV.** This is silicon lottery — other units may differ.
-
-**Benchmark results (L2 bin, off-screen terrain):**
-
-| Condition       | Freq    | Voltage  | terrain fps |
-|-----------------|---------|----------|-------------|
-| UV baseline     | 520 MHz | 1087.5 mV | 15 fps     |
-| GPU OC          | 600 MHz | 1025 mV  | **18 fps**  |
-
-**+20% FPS** at 47°C (vs 56°C stock). devfreq manages the new OPP correctly after reboot.
-
-> `vdd_logic` is shared between GPU and all SoC logic. The undervolt limit at 520 MHz was −12.5 mV — the rail has very tight margins. Start at 1150 mV and reduce cautiously. If the kernel crashes before `basic.target`, manual SD card recovery is required.
+> `vdd_logic` is shared between GPU and all SoC logic. Start at 1150 mV and reduce cautiously. If the kernel crashes before `basic.target`, manual SD card recovery is required.
 
 ## CPU OC — 1608 MHz
 
@@ -127,16 +112,7 @@ The RK3326 clock driver already contains 1608 MHz in `px30_cpuclk_rates` and `px
 1. Add `opp-1608000000` node to `/cpu0-opp-table` with desired voltage.
 2. Set `rockchip,avs-scale` from `4` to `0` — disables the AVS OPP stripping.
 
-**Benchmark results (ALU, LCG C, 10s):**
-
-| MHz  | Mops | vs 1008 MHz |
-|------|------|-------------|
-| 1008 | 1500 | 100%        |
-| 1296 | 1920 | +28%        |
-| 1512 | 1870 | +25%        |
-| 1608 | 1900 | +27%        |
-
-Practical gain of 1608 over 1512 MHz: **+1.6%**. The sweet spot remains **1512 MHz @ 1175 mV** (undervolted). GPU-bound workloads show no difference at any CPU frequency.
+Practical gain of 1608 over 1512 MHz: **+1.6%** (ALU benchmark). The sweet spot remains **1512 MHz @ 1175 mV** (undervolted). GPU-bound workloads show no difference at any CPU frequency. Full benchmark table in [docs/opp-research.md](docs/opp-research.md).
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
 
@@ -174,27 +150,7 @@ GPU terrain fps shows no change (18 fps at all DMC freqs) because Mali-G31 at 60
 
 > **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
 
-### Higher frequencies — tested and results
-
-Frequencies above 928 MHz were tested by adding OPP nodes to the DTB. ATF v0x105 accepted both but with different results:
-
-| Requested | ATF delivers | Result | Read MB/s |
-|-----------|-------------|--------|----------|
-| 928 MHz | **924 MHz** | Stable | 1076 |
-| 1000 MHz | **996 MHz** | Stable but slower | 1012 |
-| 1056 MHz | **1056 MHz** | Kernel panic under sustained load | — |
-
-**996 MHz is slower than 924 MHz** — ATF has timing tables for 996 MHz but they are more conservative than those for 924 MHz, resulting in lower effective bandwidth despite higher frequency.
-
-**1056 MHz crashes** under sustained memory-intensive workloads. `vdd_logic` is already at the PMIC hard limit (1150 mV) — no headroom to stabilize it with higher voltage.
-
-**Why voltage cannot stabilize 1056 MHz:** `vdd_logic` (shared rail for GPU + DMC + SoC logic) is already at **1150 mV** — the RK805 PMIC hard limit for DCDC_REG1. There is no headroom. Even if voltage were available, the root cause is not voltage but timing tables.
-
-**Why timing tables are the real bottleneck:** 996 MHz (from 1000 MHz OPP) was stable but *slower* than 924 MHz (1012 vs 1076 MB/s). If voltage were the limiting factor, 996 MHz would be faster than 924 MHz since it has more headroom at 1150 mV. The fact that it is slower proves ATF's internal timing tables for 996 MHz are more conservative than those for 924 MHz — higher voltage cannot fix incorrect or relaxed timings.
-
-**Why we cannot modify the timing tables:** LPDDR4 timing parameters (tCL, tRCD, tRP, tRAS, etc.) are embedded in Rockchip's closed DDR init binary (`px30_ddr_333MHz_v2.11.bin` in `rkbin`). Modifying them requires Rockchip's internal DDR training tools, which are not publicly available. The ATF BL31 source (available at [ARM-software/arm-trusted-firmware](https://github.com/ARM-software/arm-trusted-firmware)) does not contain the DDR timing data — it is a separate binary blob loaded alongside BL31.
-
-**924 MHz is not just the stability limit — it is the performance optimum.** ATF has the best-calibrated timing tables for this frequency on this SoC. Going higher yields worse real-world bandwidth despite the higher clock.
+**924 MHz is not just the stability limit — it is the performance optimum.** Frequencies above 928 MHz were tested: 996 MHz is stable but *slower* (1012 MB/s), 1056 MHz causes kernel panic under load. ATF's timing tables for 924 MHz are better calibrated than for higher frequencies; going higher yields worse bandwidth. Full analysis in [docs/opp-research.md](docs/opp-research.md).
 
 ## Performance Comparison — Full OC+UV vs Stock
 
