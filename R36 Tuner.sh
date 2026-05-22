@@ -1956,20 +1956,19 @@ MainMenu() {
         CHOICE=$(dialog --no-shadow --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
-                        --menu "Temp: $(GetTempC)°C     CPU: $(GetCPUMaxMHz) MHz\nARM:  ${ARM_MV} mV    GPU: $(GetGPUMaxMHz) MHz\nlogic: $(GetRegVoltMV "$VDD_LOGIC") mV   DMC: $(GetDMCMaxMHz) MHz" \
-                        21 58 12 \
+                        --menu "CPU: $(GetCPUMaxMHz) MHz  ${ARM_MV}mV   GPU: $(GetGPUMaxMHz) MHz  $(GetRegVoltMV "$VDD_LOGIC")mV\nRAM: $(GetDMCMaxMHz) MHz   gov: $(GetGOV)" \
+                        21 58 11 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
                         4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
-                        5  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
-                        6  "DTB Tuning          ($(GetDTBStatus))" \
-                        7  "Real-Time Monitor" \
-                        8  "Benchmark" \
-                        9  "Save Profile (boot) [${PROF_STATUS}]" \
-                        10 "View Saved Profile" \
-                        11 "Reset Profile" \
-                        12 "Exit" \
+                        5  "DTB Tuning          ($(GetDTBStatus))" \
+                        6  "Real-Time Monitor" \
+                        7  "Benchmark" \
+                        8  "Save Profile (boot) [${PROF_STATUS}]" \
+                        9  "View Saved Profile" \
+                        10 "Reset Profile" \
+                        11 "Exit" \
                         2>&1 > "$CURR_TTY")
 
         local RET=$?
@@ -1980,14 +1979,13 @@ MainMenu() {
             2)  CPUMinFreqMenu ;;
             3)  GovernorMenu ;;
             4)  GPUTuningMenu ;;
-            5)  VoltageMenu ;;
-            6)  DTBUndervoltMenu ;;
-            7)  MonitorMenu ;;
-            8)  BenchmarkMenu ;;
-            9)  SaveProfileMenu ;;
-            10) ViewProfileMenu ;;
-            11) ResetProfileMenu ;;
-            12) ExitMenu ;;
+            5)  DTBUndervoltMenu ;;
+            6)  MonitorMenu ;;
+            7)  BenchmarkMenu ;;
+            8)  SaveProfileMenu ;;
+            9)  ViewProfileMenu ;;
+            10) ResetProfileMenu ;;
+            11) ExitMenu ;;
         esac
     done
 }
