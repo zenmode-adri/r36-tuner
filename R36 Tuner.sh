@@ -360,7 +360,7 @@ DTBGPUUndervoltMenu() {
     fi
     if [ -z "$GPU_OPP" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
-            --msgbox "GPU OPP table not found in DTB.\n\nSearched: /gpu-opp-table and variants." 8 50 > "$CURR_TTY"
+            --msgbox "GPU OPP table not found in DTB.\n\nSearched: /gpu-opp-table and variants." 7 50 > "$CURR_TTY"
         return
     fi
 
@@ -389,7 +389,7 @@ DTBGPUUndervoltMenu() {
 
     if [ ${#GPU_NODES[@]} -eq 0 ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
-            --msgbox "No OPP entries found in ${GPU_OPP}" 6 50 > "$CURR_TTY"
+            --msgbox "No OPP entries found in ${GPU_OPP}" 5 50 > "$CURR_TTY"
         return
     fi
 
@@ -402,11 +402,12 @@ DTBGPUUndervoltMenu() {
     done
     [ -f "${DTB}.bak" ] && TABLE+="\n[Backup: ${DTB}.bak exists]"
 
+    local MODE_H=$(( N + 13 )); [ -f "${DTB}.bak" ] && MODE_H=$(( MODE_H + 1 ))
     local PATCH_MODE
     PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — MODO ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "${TABLE}\nSelect mode:" \
-        26 60 2 \
+        $MODE_H 60 2 \
         "uniform" "Uniform — same offset for all OPPs" \
         "fine"    "Fine tune — per OPP, 12.5 mV steps" \
         2>&1 > "$CURR_TTY")
@@ -431,7 +432,7 @@ DTBGPUUndervoltMenu() {
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — UNIFORM ]" \
             --menu "Applied to ${N} OPPs  |  Step: 12.5 mV\nFloor: 950 mV (vdd_logic PMIC min)\nStart conservative — go down gradually." \
-            20 62 10 \
+            19 62 10 \
             "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
         [ -z "$OFFSET_UV" ] && return
@@ -469,7 +470,7 @@ DTBGPUUndervoltMenu() {
             FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ GPU FINE TUNE — SELECT OPP ]" \
                 --ok-label "Tune" --cancel-label "Cancel" \
                 --menu "Select frequency to tune:" \
-                20 65 $(( N + 1 )) \
+                $(( N + 8 )) 65 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && return
@@ -496,7 +497,7 @@ DTBGPUUndervoltMenu() {
                 --title "[ GPU FINE TUNE — ${GPU_FREQS_MHZ[$IDX]} MHz ]" \
                 --default-item "$cur_off" \
                 --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelect offset:" \
-                20 60 10 \
+                18 60 10 \
                 "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && continue
@@ -528,8 +529,9 @@ DTBGPUUndervoltMenu() {
     local BAK_NOTE; [ -f "${DTB}.bak" ] && BAK_NOTE="Backup: ${DTB}.bak (existing)" || BAK_NOTE="Backup: ${DTB}.bak (will create)"
     PREVIEW+="\n${BAK_NOTE}  |  Reboot required."
 
+    local CONFIRM_H=$(( N + 6 )); [ -n "$GPU_BIN" ] && CONFIRM_H=$(( CONFIRM_H + 2 ))
     dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — CONFIRM ]" \
-        --yesno "$PREVIEW" 18 58 > "$CURR_TTY"
+        --yesno "$PREVIEW" $CONFIRM_H 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     if [ ! -f "${DTB}.bak" ]; then
@@ -559,11 +561,11 @@ DTBGPUUndervoltMenu() {
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ GPU Undervolt Patched" \
-            --yesno "GPU patched successfully.\nBackup: ${DTB}.bak\n\nSafety net active: if boot hangs,\nnext boot auto-restores original DTB.\n\nReboot now?" 11 54 > "$CURR_TTY"
+            --yesno "GPU patched successfully.\nBackup: ${DTB}.bak\n\nSafety net active: if boot hangs,\nnext boot auto-restores original DTB.\n\nReboot now?" 10 54 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT ]" \
-            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+            --msgbox "Patch failed. Restoring backup..." 5 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
 }
@@ -574,7 +576,7 @@ CPUTuningMenu() {
     local AVAIL; AVAIL=$(GetCPUAvail)
     if [ -z "$AVAIL" ]; then
         dialog --backtitle "$BACKTITLE" --title "CPU Tuning" \
-            --msgbox "Cannot read $CPU_POLICY/scaling_available_frequencies" 6 55 > "$CURR_TTY"
+            --msgbox "Cannot read $CPU_POLICY/scaling_available_frequencies" 5 55 > "$CURR_TTY"
         return
     fi
 
@@ -611,7 +613,7 @@ CPUMinFreqMenu() {
     local AVAIL; AVAIL=$(GetCPUAvail)
     if [ -z "$AVAIL" ]; then
         dialog --backtitle "$BACKTITLE" --title "CPU Min Frequency" \
-            --msgbox "Cannot read $CPU_POLICY/scaling_available_frequencies" 6 55 > "$CURR_TTY"
+            --msgbox "Cannot read $CPU_POLICY/scaling_available_frequencies" 5 55 > "$CURR_TTY"
         return
     fi
 
@@ -640,7 +642,7 @@ CPUMinFreqMenu() {
     local MAX_KHZ; MAX_KHZ=$(cat "$CPU_POLICY/scaling_max_freq" 2>/dev/null || echo 9999999)
     if [ "$SEL" -gt "$MAX_KHZ" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ CPU MIN FREQUENCY ]" \
-            --msgbox "Min freq cannot exceed max freq ($(( MAX_KHZ / 1000 )) MHz)." 6 52 > "$CURR_TTY"
+            --msgbox "Min freq cannot exceed max freq ($(( MAX_KHZ / 1000 )) MHz)." 5 52 > "$CURR_TTY"
         return
     fi
 
@@ -656,7 +658,7 @@ GovernorMenu() {
     local AVAIL_GOV; AVAIL_GOV=$(cat "$CPU_POLICY/scaling_available_governors" 2>/dev/null)
     if [ -z "$AVAIL_GOV" ]; then
         dialog --backtitle "$BACKTITLE" --title "CPU Governor" \
-            --msgbox "Cannot read available governors from:\n$CPU_POLICY/scaling_available_governors" 7 55 > "$CURR_TTY"
+            --msgbox "Cannot read available governors from:\n$CPU_POLICY/scaling_available_governors" 6 55 > "$CURR_TTY"
         return
     fi
 
@@ -676,12 +678,13 @@ GovernorMenu() {
         CHOICES+=("$g" "${m}${desc}")
     done
 
+    local GOV_COUNT=$(( ${#CHOICES[@]} / 2 ))
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ CPU GOVERNOR ]" \
                  --default-item "$CUR_GOV" \
                  --menu "★ = active  |  Save Profile to persist at boot" \
-                 15 62 8 \
+                 $(( GOV_COUNT + 7 )) 62 $GOV_COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -694,14 +697,14 @@ GovernorMenu() {
 GPUTuningMenu() {
     if [ -z "$GPU_DEVFREQ" ]; then
         dialog --backtitle "$BACKTITLE" --title "GPU Tuning" \
-            --msgbox "GPU devfreq not found.\nSearched: *gpu*  *mali*  *ff400000*" 7 52 > "$CURR_TTY"
+            --msgbox "GPU devfreq not found.\nSearched: *gpu*  *mali*  *ff400000*" 6 52 > "$CURR_TTY"
         return
     fi
 
     local AVAIL; AVAIL=$(GetGPUAvail)
     if [ -z "$AVAIL" ]; then
         dialog --backtitle "$BACKTITLE" --title "GPU Tuning" \
-            --msgbox "Cannot read $GPU_DEVFREQ/available_frequencies" 6 58 > "$CURR_TTY"
+            --msgbox "Cannot read $GPU_DEVFREQ/available_frequencies" 5 58 > "$CURR_TTY"
         return
     fi
 
@@ -743,7 +746,7 @@ VoltageMenu() {
     dialog --backtitle "$BACKTITLE" \
            --title "[ VOLTAGE INFO ]" \
            --msgbox "Runtime voltages (read-only — OPP framework owns these rails):\n\nvdd_arm   — CPU cores  : ${ARM_MV} mV\nvdd_logic — SoC / GPU  : ${LOGIC_MV} mV\nvcc_ddr   — RAM        : ${DDR_MV} mV\n\nTo change voltages permanently:\n  → DTB Tuning (previous menu)" \
-           14 58 > "$CURR_TTY"
+           12 58 > "$CURR_TTY"
 }
 
 # ── DTB Tuning ───────────────────────────────────────────────────────────────
@@ -769,11 +772,12 @@ DTBUndervoltMenu() {
     grep -q "928000000" /sys/class/devfreq/dmc/available_frequencies 2>/dev/null \
         && DMC_OC_STATUS=" [ACTIVE]"
 
+    local DTB_ITEMS=$(( 7 + ${#RESTORE_OPT[@]} / 2 ))
     local ACTION
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "OPP voltage patch and frequency unlock — reboot required" \
-        20 62 9 \
+        $(( DTB_ITEMS + 7 )) 62 $DTB_ITEMS \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
         "oc"      "CPU OC 1608 MHz — unlock via DTB${OC_STATUS}" \
@@ -789,7 +793,7 @@ DTBUndervoltMenu() {
     if [ "$ACTION" = "help" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ EMERGENCY RECOVERY ]" \
             --msgbox "IF DEVICE WON'T BOOT after DTB undervolt:\n\n1. Power off the R36S\n2. Remove the system SD card\n3. Plug SD into PC via card reader\n4. Open the FAT32 partition (= /boot)\n   If not visible: use DiskGenius (free)\n5. Inside /boot you will find:\n     rk3326-r36s-linux.dtb      <- bad\n     rk3326-r36s-linux.dtb.bak  <- original\n6. Copy .bak over .dtb (overwrite)\n7. Delete .r36_dtb_patch_booting if exists\n8. Eject SD, reinsert, boot\n\nThe .bak is always the pre-patch original.\nSafety service auto-restores if boot hangs\nbut cannot act if kernel panics early." \
-            24 62 > "$CURR_TTY"
+            21 62 > "$CURR_TTY"
         return
     fi
 
@@ -797,7 +801,7 @@ DTBUndervoltMenu() {
     if [ "$ACTION" = "restore" ]; then
         local DTB="$DTB_QUICK"
         dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
-            --yesno "Restore original DTB from backup?\n\n${DTB}.bak → $DTB\n\nSafety service will also be disabled.\nReboot required." 11 55 > "$CURR_TTY"
+            --yesno "Restore original DTB from backup?\n\n${DTB}.bak → $DTB\n\nSafety service will also be disabled.\nReboot required." 10 55 > "$CURR_TTY"
         if [ $? -eq 0 ]; then
             cp "${DTB}.bak" "$DTB" && sync
             TeardownDTBSafetyService
@@ -812,13 +816,13 @@ DTBUndervoltMenu() {
     # 1. Check tool
     if ! command -v fdtput >/dev/null 2>&1; then
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --yesno "device-tree-compiler not installed.\n\nInstall now? (~500KB, requires internet)" 9 55 > "$CURR_TTY"
+            --yesno "device-tree-compiler not installed.\n\nInstall now? (~500KB, requires internet)" 7 55 > "$CURR_TTY"
         [ $? -ne 0 ] && return
         dialog --infobox "Installing device-tree-compiler..." 4 50 > "$CURR_TTY"
         apt-get install -y device-tree-compiler >/dev/null 2>&1
         if ! command -v fdtput >/dev/null 2>&1; then
             dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-                --msgbox "Install failed. Check internet connection." 6 48 > "$CURR_TTY"
+                --msgbox "Install failed. Check internet connection." 5 48 > "$CURR_TTY"
             return
         fi
     fi
@@ -827,7 +831,7 @@ DTBUndervoltMenu() {
     local DTB="$DTB_QUICK"
     if [ -z "$DTB" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --msgbox "DTB file not found in /boot/" 6 45 > "$CURR_TTY"
+            --msgbox "DTB file not found in /boot/" 5 45 > "$CURR_TTY"
         return
     fi
 
@@ -851,7 +855,7 @@ DTBUndervoltMenu() {
     if [ -z "$OPP_BASE" ]; then
         local ROOT_NODES; ROOT_NODES=$(fdtget -l "$DTB" / 2>/dev/null | tr '\n' ' ')
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --msgbox "OPP table not found in DTB.\n\nRoot nodes scanned:\n$ROOT_NODES" 10 60 > "$CURR_TTY"
+            --msgbox "OPP table not found in DTB.\n\nRoot nodes scanned:\n$ROOT_NODES" 8 60 > "$CURR_TTY"
         return
     fi
 
@@ -901,7 +905,7 @@ DTBUndervoltMenu() {
 
     if [ ${#NODES[@]} -eq 0 ]; then
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --msgbox "No OPP entries found in $OPP_BASE" 6 48 > "$CURR_TTY"
+            --msgbox "No OPP entries found in $OPP_BASE" 5 48 > "$CURR_TTY"
         return
     fi
 
@@ -973,11 +977,12 @@ else: print('?')
     done
     [ -f "${DTB}.bak" ] && TABLE+="\n[Backup: ${DTB}.bak exists]"
 
+    local MODE_H=$(( ${#NODES[@]} + 13 )); [ -f "${DTB}.bak" ] && MODE_H=$(( MODE_H + 1 ))
     local PATCH_MODE
     PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — PATCH ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "${TABLE}\nSelect patch mode:" \
-        26 60 2 \
+        $MODE_H 60 2 \
         "uniform" "Uniform — same offset for all frequencies" \
         "fine"    "Fine tune — per-frequency, 12.5 mV steps" \
         2>&1 > "$CURR_TTY")
@@ -1003,7 +1008,7 @@ else: print('?')
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — UNIFORM OFFSET ]" \
             --menu "Applied to all ${N} OPPs  |  Step: 12.5 mV\nFloor: 950 mV (PMIC min)\nStart conservative — go down gradually." \
-            20 62 10 \
+            19 62 10 \
             "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
         [ -z "$OFFSET_UV" ] && return
@@ -1043,7 +1048,7 @@ else: print('?')
             FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — SELECT FREQUENCY ]" \
                 --ok-label "Tune" --cancel-label "Cancel" \
                 --menu "Select frequency to adjust:" \
-                20 65 $(( N + 1 )) \
+                $(( N + 8 )) 65 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && return
@@ -1070,7 +1075,7 @@ else: print('?')
             FREQ_OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — ${freq_mhz} MHz ]" \
                 --default-item "$cur_off" \
                 --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelect offset:" \
-                20 60 10 \
+                18 60 10 \
                 "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && continue
@@ -1103,8 +1108,9 @@ else: print('?')
     local BAK_NOTE; [ -f "${DTB}.bak" ] && BAK_NOTE="Backup: ${DTB}.bak (existing)" || BAK_NOTE="Backup: ${DTB}.bak (will create)"
     PREVIEW+="\n${BAK_NOTE}  |  Reboot required."
 
+    local CONFIRM_H=$(( N + 6 )); [ -n "$BIN_LEVEL" ] && CONFIRM_H=$(( CONFIRM_H + 2 ))
     dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — CONFIRM ]" \
-        --yesno "$PREVIEW" 22 58 > "$CURR_TTY"
+        --yesno "$PREVIEW" $CONFIRM_H 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Backup + apply — only create backup if none exists yet (preserve true original)
@@ -1135,11 +1141,11 @@ else: print('?')
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ DTB Patched" \
-            --yesno "DTB patched successfully.\nBackup: ${DTB}.bak\n\nSafety net active: if boot hangs, next boot\nauto-restores original DTB.\n\nReboot now to apply?" 11 52 > "$CURR_TTY"
+            --yesno "DTB patched successfully.\nBackup: ${DTB}.bak\n\nSafety net active: if boot hangs, next boot\nauto-restores original DTB.\n\nReboot now to apply?" 10 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
-            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+            --msgbox "Patch failed. Restoring backup..." 5 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
 }
@@ -1181,7 +1187,7 @@ DTBCPUOC() {
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — VOLTAGE @ 1608 MHz ]" \
         --menu "Stock 1512 MHz = ${STOCK_MV} mV (your chip)\nStart high — go down gradually.\nToo low = may not boot (safety service helps)." \
-        18 62 10 \
+        19 62 10 \
         "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
@@ -1192,7 +1198,7 @@ DTBCPUOC() {
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU OC — CONFIRM ]" \
-        --yesno "Apply CPU OC 1608 MHz @ ${VOLT_MV} mV\n\nDTB changes:\n  + $OPP_BASE/opp-1608000000\n    ${OPP_BIN_PROP} = ${VOLT_MV} ${VOLT_MV} ${VOLT_MV} mV\n  + rockchip,avs-scale = 0\n\n${BAK_NOTE}\nReboot required." 15 60 > "$CURR_TTY"
+        --yesno "Apply CPU OC 1608 MHz @ ${VOLT_MV} mV\n\nDTB changes:\n  + $OPP_BASE/opp-1608000000\n    ${OPP_BIN_PROP} = ${VOLT_MV} ${VOLT_MV} ${VOLT_MV} mV\n  + rockchip,avs-scale = 0\n\n${BAK_NOTE}\nReboot required." 13 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Backup (preserve true original — never overwrite)
@@ -1216,11 +1222,11 @@ DTBCPUOC() {
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ OC Patched" \
-            --yesno "1608 MHz OPP added @ ${VOLT_MV} mV\nrockchip,avs-scale → 0\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 12 52 > "$CURR_TTY"
+            --yesno "1608 MHz OPP added @ ${VOLT_MV} mV\nrockchip,avs-scale → 0\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ CPU OC ]" \
-            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+            --msgbox "Patch failed. Restoring backup..." 5 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
 }
@@ -1245,7 +1251,7 @@ DTBGPUOC() {
     fi
     if [ -z "$GPU_OPP" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GPU OC ]" \
-            --msgbox "GPU OPP table not found in DTB." 6 48 > "$CURR_TTY"
+            --msgbox "GPU OPP table not found in DTB." 5 48 > "$CURR_TTY"
         return
     fi
 
@@ -1275,7 +1281,7 @@ DTBGPUOC() {
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ GPU OC — 600 MHz ]" \
-        --yesno "${STATE_MSG}Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics.\n\nContinue?" 20 58 > "$CURR_TTY"
+        --yesno "${STATE_MSG}Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics.\n\nContinue?" 18 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full vdd_logic range 950–1150 mV, 12.5 mV steps
@@ -1292,7 +1298,7 @@ DTBGPUOC() {
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU OC — VOLTAGE @ 600 MHz ]" \
         --menu "Stock 520 MHz = ${STOCK_GPU_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
-        18 62 10 \
+        19 62 10 \
         "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
@@ -1305,7 +1311,7 @@ DTBGPUOC() {
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
     dialog --backtitle "$BACKTITLE" --title "[ GPU OC — CONFIRM ]" \
-        --yesno "Apply GPU OC 600 MHz @ ${VOLT_STR} mV\n\nDTB changes:\n  + $GPU_OPP/opp-600000000\n    opp-hz: 0 600000000\n    ${GPU_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 58 > "$CURR_TTY"
+        --yesno "Apply GPU OC 600 MHz @ ${VOLT_STR} mV\n\nDTB changes:\n  + $GPU_OPP/opp-600000000\n    opp-hz: 0 600000000\n    ${GPU_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 13 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Backup (preserve true original — never overwrite)
@@ -1332,7 +1338,7 @@ DTBGPUOC() {
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ GPU OC ]" \
-            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+            --msgbox "Patch failed. Restoring backup..." 5 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
 }
@@ -1349,7 +1355,7 @@ DTBRAMOC() {
     done
     if [ -z "$DMC_OPP" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ DMC OC ]" \
-            --msgbox "DMC OPP table not found in DTB." 6 48 > "$CURR_TTY"
+            --msgbox "DMC OPP table not found in DTB." 5 48 > "$CURR_TTY"
         return
     fi
 
@@ -1378,7 +1384,7 @@ DTBRAMOC() {
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ DMC / RAM OC — 928 MHz ]" \
-        --yesno "${STATE_MSG}ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change.\n\nContinue?" 22 60 > "$CURR_TTY"
+        --yesno "${STATE_MSG}ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change.\n\nContinue?" 19 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full hardware range 950–1150 mV, 12.5 mV steps
@@ -1395,7 +1401,7 @@ DTBRAMOC() {
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DMC OC — VOLTAGE @ 928 MHz ]" \
         --menu "Stock 786 MHz = ${STOCK_DMC_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
-        18 62 10 \
+        19 62 10 \
         "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
@@ -1408,7 +1414,7 @@ DTBRAMOC() {
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
     dialog --backtitle "$BACKTITLE" --title "[ DMC OC — CONFIRM ]" \
-        --yesno "Apply RAM OC 928 MHz (ATF: 924 MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/opp-928000000\n    opp-hz: 0 928000000\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 58 > "$CURR_TTY"
+        --yesno "Apply RAM OC 928 MHz (ATF: 924 MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/opp-928000000\n    opp-hz: 0 928000000\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 13 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     if [ ! -f "${DTB}.bak" ]; then
@@ -1433,7 +1439,7 @@ DTBRAMOC() {
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ DMC OC ]" \
-            --msgbox "Patch failed. Restoring backup..." 6 45 > "$CURR_TTY"
+            --msgbox "Patch failed. Restoring backup..." 5 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
 }
@@ -1562,7 +1568,7 @@ CSRC
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
         --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}" \
-        10 62 > "$CURR_TTY"
+        9 62 > "$CURR_TTY"
 }
 
 BenchmarkRAM() {
@@ -1642,14 +1648,14 @@ InstallGlmark2() {
 BenchmarkGPU() {
     if ! command -v glmark2-es2-drm >/dev/null 2>&1; then
         dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-            --yesno "glmark2-es2-drm not found.\nInstall from bundled package (~20s)?" 7 52 > "$CURR_TTY"
+            --yesno "glmark2-es2-drm not found.\nInstall from bundled package (~20s)?" 6 52 > "$CURR_TTY"
         [ $? -ne 0 ] && return
         InstallGlmark2 || { dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-            --msgbox "Install failed.\nManual install: apt install glmark2-es2-drm" 7 52 > "$CURR_TTY"; return 1; }
+            --msgbox "Install failed.\nManual install: apt install glmark2-es2-drm" 6 52 > "$CURR_TTY"; return 1; }
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — GPU ]" \
-        --yesno "GPU benchmark (glmark2-es2-drm --off-screen).\nDuration: ~1 min. Black screen — normal.\nResult shown on next menu open.\n\nContinue?" 10 58 > "$CURR_TTY"
+        --yesno "GPU benchmark (glmark2-es2-drm --off-screen).\nDuration: ~1 min. Black screen — normal.\nResult shown on next menu open.\n\nContinue?" 9 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
@@ -1709,7 +1715,7 @@ systemctl start r36-gpu-bench' 2>/dev/null
 
 BenchmarkSetBaseline() {
     dialog --backtitle "$BACKTITLE" --title "[ SET BASELINE ]" \
-        --yesno "Run CPU benchmark now and save result as baseline (100%)?\n\nThis will replace any existing baseline." 8 55 > "$CURR_TTY"
+        --yesno "Run CPU benchmark now and save result as baseline (100%)?\n\nThis will replace any existing baseline." 7 55 > "$CURR_TTY"
     [ $? -ne 0 ] && return
     rm -f "$BASELINE_FILE"
     BenchmarkCPU
@@ -1718,7 +1724,7 @@ BenchmarkSetBaseline() {
 BenchmarkViewHistory() {
     if [ ! -f "$SCORES_FILE" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ SCORE HISTORY ]" \
-            --msgbox "No scores recorded yet.\nRun a CPU benchmark first." 7 50 > "$CURR_TTY"
+            --msgbox "No scores recorded yet.\nRun a CPU benchmark first." 6 50 > "$CURR_TTY"
         return
     fi
     local BASE=""
@@ -1745,7 +1751,7 @@ BenchmarkClearHistory() {
     [ $? -ne 0 ] && return
     rm -f "$SCORES_FILE" "$BASELINE_FILE"
     dialog --backtitle "$BACKTITLE" --title "✓ History Cleared" \
-        --msgbox "Score history and baseline deleted.\nNext benchmark run will set a new baseline." 7 52 > "$CURR_TTY"
+        --msgbox "Score history and baseline deleted.\nNext benchmark run will set a new baseline." 6 52 > "$CURR_TTY"
 }
 
 StressTestCPU() {
@@ -1754,14 +1760,14 @@ StressTestCPU() {
     local END=$(( $(date +%s) + DURATION ))
     local MAX_TEMP=0 MIN_TEMP=999 TEMP_SUM=0 TEMP_COUNT=0
     dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS TEST ]" \
-        --infobox "Burning CPU for ${DURATION}s (5 min) via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 7 52 > "$CURR_TTY"
+        --infobox "Burning CPU for ${DURATION}s (5 min) via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 8 52 > "$CURR_TTY"
 
     while [ "$(date +%s)" -lt "$END" ]; do
         local T; T=$(GetTempC)
         if [[ "$T" =~ ^[0-9]+$ ]]; then
             if [ "$T" -ge 85 ]; then
                 dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — ABORTED ]" \
-                    --msgbox "THERMAL ABORT at ${T}°C\n\nUndervolt may be unstable at this load.\nTry a smaller offset." 9 50 > "$CURR_TTY"
+                    --msgbox "THERMAL ABORT at ${T}°C\n\nUndervolt may be unstable at this load.\nTry a smaller offset." 8 50 > "$CURR_TTY"
                 return 1
             fi
             [ "$T" -gt "$MAX_TEMP" ] && MAX_TEMP=$T
@@ -1791,7 +1797,7 @@ ValidateUndervolt() {
     local DTB_ST; DTB_ST=$(GetDTBStatus)
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATE UNDERVOLT ]" \
         --yesno "Run full undervolt validation?\n\nDTB: ${DTB_ST}\n\nSteps:\n  1. CPU Benchmark  (~60s)\n  2. CPU Stress test (~5 min)\n\nTotal: ~6 minutes. Do not interrupt." \
-        14 52 > "$CURR_TTY"
+        13 52 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     BenchmarkCPU
@@ -1810,7 +1816,7 @@ ValidateUndervolt() {
     fi
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATION COMPLETE ]" \
         --msgbox "${VERDICT}\n\n${MHZ} MHz  |  ${MV} mV\nDTB: ${DTB_ST}\nTemp: min ${STRESS_MIN_TEMP}°C  avg ${STRESS_AVG_TEMP}°C  peak ${STRESS_MAX_TEMP}°C" \
-        11 54 > "$CURR_TTY"
+        9 54 > "$CURR_TTY"
 }
 
 ValidateGPUUndervolt() {
@@ -1847,11 +1853,11 @@ ValidateGPUUndervolt() {
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULT ]" \
             --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVerdict: ${VERDICT}\n\nBaseline stock: ~15 fps off-screen / ~14 fps on-screen\nArtifacts / freeze / crash = unstable.\n\nSaved to history." \
-            15 56 > "$CURR_TTY"
+            13 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — FAILED ]" \
-            --msgbox "glmark2 terrain failed.\n\n${ERR}" 9 56 > "$CURR_TTY"
+            --msgbox "glmark2 terrain failed.\n\n${ERR}" 7 56 > "$CURR_TTY"
     fi
     rm -f "$GL_LOG"
 }
@@ -1863,7 +1869,7 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    22 62 10 \
+                    17 62 10 \
                     1  "CPU           — int ALU               (~10s)" \
                     2  "RAM           — 128MB r/w             (~8s)" \
                     3  "GPU           — glmark2-es2-drm        (~1min)" \
@@ -1898,14 +1904,14 @@ SaveProfileMenu() {
 
     dialog --backtitle "$BACKTITLE" --title "[ SAVE PROFILE ]" \
         --yesno "Save current tuning as boot profile?\n\nCPU max   : $(GetCPUMaxMHz) MHz\nCPU min   : $(GetCPUMinMHz) MHz\nGPU max   : $(GetGPUMaxMHz) MHz\nDMC max   : $(GetDMCMaxMHz) MHz\nvdd_arm   : $(GetRegVoltMV "$VDD_ARM") mV\nvdd_logic : $(GetRegVoltMV "$VDD_LOGIC") mV\nvcc_ddr   : $(GetRegVoltMV "$VCC_DDR") mV\nGovernor  : $(GetGOV)\n\nFail-safe : panic flag active at boot\nAutostart : $BOOT_ACTIVE" \
-        22 55 > "$CURR_TTY"
+        17 55 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     SaveConfig
     SetupBootService
 
     dialog --backtitle "$BACKTITLE" --title "✓ Profile Saved" \
-        --msgbox "Profile saved!\n\nFile    : /etc/r36_tuner.ini\nService : r36-tuner.service  ✓ enabled\n\nFail-safe active: if boot hangs, next boot\nautomatically disables the profile." 12 55 > "$CURR_TTY"
+        --msgbox "Profile saved!\n\nFile    : /etc/r36_tuner.ini\nService : r36-tuner.service  ✓ enabled\n\nFail-safe active: if boot hangs, next boot\nautomatically disables the profile." 11 55 > "$CURR_TTY"
 }
 
 ResetProfileMenu() {
@@ -1919,13 +1925,13 @@ ResetProfileMenu() {
 
     dialog --backtitle "$BACKTITLE" --title "✓ Profile Reset" \
         --msgbox "Profile deleted.\nBoot service disabled.\n\nSystem will boot with kernel defaults." \
-        9 50 > "$CURR_TTY"
+        8 50 > "$CURR_TTY"
 }
 
 ViewProfileMenu() {
     if [ ! -f "$CONFIG_FILE" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ SAVED PROFILE ]" \
-            --msgbox "No profile saved.\n\n$CONFIG_FILE not found." 8 50 > "$CURR_TTY"
+            --msgbox "No profile saved.\n\n$CONFIG_FILE not found." 7 50 > "$CURR_TTY"
         return
     fi
     local CONTENT; CONTENT=$(cat "$CONFIG_FILE" 2>/dev/null)
@@ -2003,7 +2009,7 @@ sleep 1
 if [ -f "${CONFIG_FILE}.failed" ]; then
     dialog --backtitle "$BACKTITLE" --title "[ BOOT PROFILE FAILED ]" \
         --yesno "Last boot: profile caused a hang and was auto-disabled.\n\nFailed config: ${CONFIG_FILE}.failed\n\nDelete the failed config file?" \
-        11 62 > "$CURR_TTY"
+        9 62 > "$CURR_TTY"
     [ $? -eq 0 ] && rm -f "${CONFIG_FILE}.failed"
 fi
 
@@ -2013,7 +2019,7 @@ if [ -f "$DTB_RESTORED" ]; then
     TeardownDTBSafetyService
     dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — AUTO-RESTORED ]" \
         --msgbox "Previous DTB undervolt caused instability.\nOriginal DTB was restored automatically.\n\nSafety service has been disabled.\nTry a smaller voltage offset next time." \
-        10 58 > "$CURR_TTY"
+        9 58 > "$CURR_TTY"
 fi
 
 # Show pending GPU bench result from previous run
