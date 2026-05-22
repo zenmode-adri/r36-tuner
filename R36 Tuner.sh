@@ -796,7 +796,7 @@ DTBUndervoltMenu() {
     # Restore — only needs DTB path, no OPP scan
     if [ "$ACTION" = "restore" ]; then
         local DTB="$DTB_QUICK"
-        dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+        dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
             --yesno "Restore original DTB from backup?\n\n${DTB}.bak → $DTB\n\nSafety service will also be disabled.\nReboot required." 11 55 > "$CURR_TTY"
         if [ $? -eq 0 ]; then
             cp "${DTB}.bak" "$DTB" && sync
@@ -1166,7 +1166,7 @@ DTBCPUOC() {
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
-        --yesno "${STATE_MSG}EXPERIMENTAL — not all R36S units are equal.\nSilicon quality varies between devices.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup.\n\nContinue?" 20 62 > "$CURR_TTY"
+        --yesno "${STATE_MSG}Silicon quality varies — not all R36S units are equal.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup.\n\nContinue?" 19 62 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full hardware range 950–1350 mV, 12.5 mV steps
@@ -1741,7 +1741,7 @@ BenchmarkClearHistory() {
     local COUNT=0
     [ -f "$SCORES_FILE" ] && COUNT=$(wc -l < "$SCORES_FILE" 2>/dev/null || echo 0)
     dialog --backtitle "$BACKTITLE" --title "[ CLEAR HISTORY ]" \
-        --yesno "Delete score history and baseline?\n\n${COUNT} entries in log\nBaseline: $(cat "$BASELINE_FILE" 2>/dev/null || echo "none") MB/s\n\nThis cannot be undone." 10 48 > "$CURR_TTY"
+        --yesno "Delete score history and baseline?\n\n${COUNT} entries in log\nBaseline: $(cat "$BASELINE_FILE" 2>/dev/null || echo "none") Mops/10s\n\nThis cannot be undone." 10 48 > "$CURR_TTY"
     [ $? -ne 0 ] && return
     rm -f "$SCORES_FILE" "$BASELINE_FILE"
     dialog --backtitle "$BACKTITLE" --title "✓ History Cleared" \
@@ -1846,7 +1846,7 @@ ValidateGPUUndervolt() {
         local VERDICT="STABLE"
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULT ]" \
-            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVerdict: ${VERDICT}\n\nBaseline stock: ~14 fps on-screen / ~16 fps off-screen\nArtifacts / freeze / crash = unstable.\n\nSaved to history." \
+            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVerdict: ${VERDICT}\n\nBaseline stock: ~15 fps off-screen / ~14 fps on-screen\nArtifacts / freeze / crash = unstable.\n\nSaved to history." \
             15 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
@@ -1950,13 +1950,13 @@ ExitMenu() {
 MainMenu() {
     while true; do
         local ARM_MV; ARM_MV=$(GetRegVoltMV "$VDD_ARM")
-        local PROF_STATUS="off"
+        local PROF_STATUS="✗ off"
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
         CHOICE=$(dialog --no-shadow --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
-                        --menu "Temp: $(GetTempC)°C        CPU: $(GetCPUMaxMHz) MHz\narm:  ${ARM_MV} mV         GPU: $(GetGPUMaxMHz) MHz\nlogic: $(GetRegVoltMV "$VDD_LOGIC") mV    DMC: $(GetDMCMaxMHz) MHz\n" \
+                        --menu "Temp: $(GetTempC)°C     CPU: $(GetCPUMaxMHz) MHz\nARM:  ${ARM_MV} mV    GPU: $(GetGPUMaxMHz) MHz\nlogic: $(GetRegVoltMV "$VDD_LOGIC") mV   DMC: $(GetDMCMaxMHz) MHz" \
                         21 58 12 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
@@ -1964,7 +1964,7 @@ MainMenu() {
                         4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
                         5  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
                         6  "DTB Tuning          ($(GetDTBStatus))" \
-                        7  "Real-Time Monitor   ($(GetTempC)°C)" \
+                        7  "Real-Time Monitor" \
                         8  "Benchmark" \
                         9  "Save Profile (boot) [${PROF_STATUS}]" \
                         10 "View Saved Profile" \
