@@ -96,16 +96,26 @@ For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-
 
 The GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` exactly. No GPU rate table exists in the driver — the only limit was the OPP table. Adding a `opp-600000000` node is sufficient.
 
-**Voltage:** 1150 mV — the PMIC hard limit for `vdd_logic` (shared rail). Within `rockchip,max-volt = 1175 mV`.
+**Voltage (conservative start):** 1150 mV — the PMIC hard limit for `vdd_logic`. Start here and reduce in 12.5 mV steps.
+
+**Undervolt sweep results (L2 bin, leakage=13):**
+
+| Voltage | terrain fps | Temp | Status |
+|---|---|---|---|
+| 1150 mV | 15 | 56°C | stable (start here) |
+| 1025 mV | 15 | 47°C | **stable — confirmed limit for this chip** |
+| 1012.5 mV | 13 | 50°C | artifacts — physical limit |
+
+**Stable floor for this chip: 1025 mV = −125 mV from the initial 1150 mV.** This is silicon lottery — other units may differ.
 
 **Benchmark results (L2 bin, off-screen terrain):**
 
 | Condition       | Freq    | Voltage  | terrain fps |
 |-----------------|---------|----------|-------------|
-| UV baseline     | 520 MHz | 1087.5 mV | 15–16      |
-| GPU OC          | 600 MHz | 1150 mV  | **18 fps**  |
+| UV baseline     | 520 MHz | 1087.5 mV | 15 fps     |
+| GPU OC          | 600 MHz | 1025 mV  | **18 fps**  |
 
-**+20% FPS**, stable at 62°C. devfreq manages the new OPP correctly after reboot.
+**+20% FPS** at 47°C (vs 56°C stock). devfreq manages the new OPP correctly after reboot.
 
 > `vdd_logic` is shared between GPU and all SoC logic. The undervolt limit at 520 MHz was −12.5 mV — the rail has very tight margins. Start at 1150 mV and reduce cautiously. If the kernel crashes before `basic.target`, manual SD card recovery is required.
 
@@ -185,6 +195,55 @@ Frequencies above 928 MHz were tested by adding OPP nodes to the DTB. ATF v0x105
 **Why we cannot modify the timing tables:** LPDDR4 timing parameters (tCL, tRCD, tRP, tRAS, etc.) are embedded in Rockchip's closed DDR init binary (`px30_ddr_333MHz_v2.11.bin` in `rkbin`). Modifying them requires Rockchip's internal DDR training tools, which are not publicly available. The ATF BL31 source (available at [ARM-software/arm-trusted-firmware](https://github.com/ARM-software/arm-trusted-firmware)) does not contain the DDR timing data — it is a separate binary blob loaded alongside BL31.
 
 **924 MHz is not just the stability limit — it is the performance optimum.** ATF has the best-calibrated timing tables for this frequency on this SoC. Going higher yields worse real-world bandwidth despite the higher clock.
+
+## Performance Comparison — Full OC+UV vs Stock
+
+Measured on the same unit (L2 bin, leakage=13), **without thermal pad** (real-world condition for most R36S owners). Both runs use identical settings: glmark2-es2-drm 2021.02, off-screen 320×240, same 20 scenes.
+
+| Configuration | GPU | CPU | DMC | vdd_arm | vdd_logic |
+|---|---|---|---|---|---|
+| **Stock** | 520 MHz | 1512 MHz | 786 MHz | ~1200 mV | 975 mV |
+| **OC + UV** | 600 MHz | 1608 MHz | 924 MHz | 1187.5 mV | 1025 mV |
+
+### Scene-by-scene results
+
+| Scene | Stock fps | OC+UV fps | Delta |
+|---|---|---|---|
+| [build] use-vbo=false | 505 | 564 | **+11.7%** |
+| [build] use-vbo=true | 681 | 801 | **+17.6%** |
+| [texture] nearest | 1247 | 1294 | +3.8% |
+| [texture] linear | 1186 | 1317 | **+11.0%** |
+| [texture] mipmap | 1240 | 1389 | **+12.0%** |
+| [shading] gouraud | 474 | 530 | +11.8% |
+| [shading] blinn-phong | 437 | 500 | **+14.4%** |
+| [shading] phong | 356 | 397 | +11.5% |
+| [shading] cel | 319 | 359 | +12.5% |
+| [bump] high-poly | 191 | 224 | **+17.3%** |
+| [bump] normals | 1043 | 1119 | +7.3% |
+| [effect2d] laplacian | 498 | 558 | +12.0% |
+| [effect2d] box-5x5 | 198 | 227 | +14.6% |
+| [pulsar] | 1068 | 1142 | +6.9% |
+| [desktop] blur | 209 | 229 | +9.6% |
+| [desktop] shadow | 461 | 475 | +3.0% |
+| [buffer] map | 72 | 80 | +11.1% |
+| [buffer] subdata | 72 | 79 | +9.7% |
+| [buffer] interleaved | 89 | 97 | +9.0% |
+| [ideas] | 152 | 156 | +2.6% |
+| **terrain** (separate test) | **15 fps** | **18 fps** | **+20.0%** |
+
+**Overall: ~+10% across general workloads, +20% GPU compute (terrain).**
+
+### Thermal results
+
+| | Stock | OC+UV | Delta |
+|---|---|---|---|
+| Initial temp | 54°C | 54°C | 0°C |
+| Average temp | 64°C | 65°C | **+1°C** |
+| Peak temp | 72°C | 72°C | **0°C** |
+
+The CPU undervolt (−112.5 mV) and GPU undervolt (−125 mV from the original 1150 mV) offset the extra heat from the higher clocks. Peak temperature is identical to stock despite running GPU at +15% and CPU at +6% higher frequency.
+
+> Results represent one chip (L2 bin). Silicon lottery applies — your unit may tolerate more or less undervolt.
 
 ## Emergency Recovery — Device Won't Boot
 
