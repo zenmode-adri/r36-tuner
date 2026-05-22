@@ -744,11 +744,11 @@ VoltageMenu() {
 
     dialog --backtitle "$BACKTITLE" \
            --title "[ VOLTAGE INFO ]" \
-           --msgbox "Runtime voltages (read-only — OPP framework owns these rails):\n\nvdd_arm   — CPU cores  : ${ARM_MV} mV\nvdd_logic — SoC / GPU  : ${LOGIC_MV} mV\nvcc_ddr   — RAM        : ${DDR_MV} mV\n\nTo change voltages permanently:\n  → DTB Undervolt (previous menu)" \
+           --msgbox "Runtime voltages (read-only — OPP framework owns these rails):\n\nvdd_arm   — CPU cores  : ${ARM_MV} mV\nvdd_logic — SoC / GPU  : ${LOGIC_MV} mV\nvcc_ddr   — RAM        : ${DDR_MV} mV\n\nTo change voltages permanently:\n  → DTB Tuning (previous menu)" \
            14 58 > "$CURR_TTY"
 }
 
-# ── DTB Undervolt ────────────────────────────────────────────────────────────
+# ── DTB Tuning ───────────────────────────────────────────────────────────────
 
 DTBUndervoltMenu() {
     # Top-level submenu — shown first, no heavy scanning yet
