@@ -1383,14 +1383,22 @@ DTBRAMOC() {
         --yesno "${STATE_MSG}ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change.\n\nContinue?" 22 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    # Voltage selection
+    # Voltage selection — full hardware range 950–1150 mV, 12.5 mV steps
+    local STOCK_DMC_MV; STOCK_DMC_MV=$(fdtget -t u "$DTB" "$DMC_OPP/opp-786000000" "$DMC_BIN_PROP" 2>/dev/null | awk '{print int($1/1000)}')
+    [ -z "$STOCK_DMC_MV" ] && STOCK_DMC_MV="?"
+    local -a VOLT_ITEMS=()
+    local v=1150000
+    while [ $v -ge 950000 ]; do
+        local mv=$(( v / 1000 )); local frac=$(( v % 1000 ))
+        local label="${mv} mV"; [ "$frac" -eq 500 ] && label="${mv}.5 mV"
+        VOLT_ITEMS+=("$v" "$label")
+        v=$(( v - 12500 ))
+    done
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DMC OC — VOLTAGE @ 928 MHz ]" \
-        --menu "L2 stock: 786 MHz = 1025 mV  |  PMIC max = 1150 mV:" \
-        13 62 3 \
-        "1075000" "1075 mV  conservative  (recommended)" \
-        "1062500" "1062.5 mV" \
-        "1050000" "1050 mV  aggressive" \
+        --menu "Stock 786 MHz = ${STOCK_DMC_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
+        18 62 10 \
+        "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
 
