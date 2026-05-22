@@ -99,8 +99,7 @@ GetDTBStatus() {
     cpu_bak=$(fdtget -t u "${DTB}.bak" /cpu0-opp-table/opp-1512000000 "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
     if [ -n "$cpu_cur" ] && [ -n "$cpu_bak" ]; then
         local cd=$(( (cpu_cur - cpu_bak) / 1000 ))
-        local cmv=$(( cpu_cur / 1000 ))
-        [ "$cd" -ne 0 ] && cpu_delta="CPU ${cd}mV (${cmv}mV)"
+        [ "$cd" -ne 0 ] && cpu_delta="CPU ${cd}mV"
     fi
 
     # GPU delta — try opp-520000000 (dash and @ variants)
@@ -115,8 +114,7 @@ GetDTBStatus() {
         gpu_bak=$(fdtget -t u "${DTB}.bak" "$gpu_node" "$DTB_STATUS_PROP" 2>/dev/null | awk '{print $1}')
         if [ -n "$gpu_cur" ] && [ -n "$gpu_bak" ]; then
             local gd=$(( (gpu_cur - gpu_bak) / 1000 ))
-            local gmv=$(( gpu_cur / 1000 ))
-            [ "$gd" -ne 0 ] && gpu_delta="GPU ${gd}mV (${gmv}mV)"
+            [ "$gd" -ne 0 ] && gpu_delta="GPU ${gd}mV"
         fi
     fi
 
