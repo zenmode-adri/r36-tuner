@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v2.9 — CPU / GPU / Voltage tuning for R36S (RK3326)
+# R36 Tuner v3.6 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.5"
+VERSION="3.6"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -441,7 +441,7 @@ DTBGPUUndervoltMenu() {
         for (( i=0; i<N; i++ )); do OFFSETS_UV[$i]="$OFFSET_UV"; done
 
     else
-        # Fine tune — por OPP
+        # Fine tune — per OPP
         while true; do
             local FTCHOICES=()
             for (( i=0; i<N; i++ )); do
@@ -772,15 +772,15 @@ DTBUndervoltMenu() {
         && DMC_OC_STATUS=" [ACTIVE]"
 
     local ACTION
-    ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT ]" \
+    ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
         --ok-label "Select" --cancel-label "Back" \
-        --menu "Permanent OPP voltage patch — reboot required" \
+        --menu "OPP voltage patch and frequency unlock — reboot required" \
         20 62 9 \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
-        "oc"      "CPU OC 1608 MHz — unlock via DTB [EXPERIMENTAL]${OC_STATUS}" \
-        "gpuoc"   "GPU OC 600 MHz — unlock via DTB [EXPERIMENTAL]${GPU_OC_STATUS}" \
-        "dmcoc"   "RAM OC 928 MHz — unlock via DTB [EXPERIMENTAL]${DMC_OC_STATUS}" \
+        "oc"      "CPU OC 1608 MHz — unlock via DTB${OC_STATUS}" \
+        "gpuoc"   "GPU OC 600 MHz — unlock via DTB${GPU_OC_STATUS}" \
+        "dmcoc"   "RAM OC 928 MHz — unlock via DTB${DMC_OC_STATUS}" \
         "diag"    "Diagnose — disk vs kernel OPP" \
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
@@ -1961,7 +1961,7 @@ MainMenu() {
                         3  "CPU Governor        ($(GetGOV))" \
                         4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
                         5  "Voltage Info        (vdd_arm: ${ARM_MV} mV)" \
-                        6  "DTB Undervolt       ($(GetDTBStatus))" \
+                        6  "DTB Tuning          ($(GetDTBStatus))" \
                         7  "Real-Time Monitor   ($(GetTempC)°C)" \
                         8  "Benchmark" \
                         9  "Save Profile (boot) [${PROF_STATUS}]" \
@@ -2017,7 +2017,7 @@ if [ -f "$DTB_RESTORED" ]; then
         10 58 > "$CURR_TTY"
 fi
 
-# Mostrar resultado de GPU bench si hay uno pendiente
+# Show pending GPU bench result from previous run
 if [ -f /tmp/gpu_bench_pending ]; then
     PENDING_MSG=$(cat /tmp/gpu_bench_pending)
     rm -f /tmp/gpu_bench_pending
