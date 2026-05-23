@@ -37,10 +37,10 @@ dialog() {
         esac
     done
     if [[ "$h" =~ ^[1-9][0-9]*$ ]]; then
-        local row=$(( (22 - h) / 2 + 3 ))
+        local row=$(( (21 - h) / 2 + 3 ))
         local col=0
         [[ $row -lt 3 ]] && row=3
-        [[ "$w" =~ ^[1-9][0-9]*$ ]] && col=$(( (64 - w) / 2 )) && [[ $col -lt 0 ]] && col=0
+        [[ "$w" =~ ^[1-9][0-9]*$ ]] && col=$(( (63 - w) / 2 )) && [[ $col -lt 0 ]] && col=0
         command dialog --begin "$row" "$col" "${args[@]}"
     else
         command dialog "${args[@]}"
