@@ -1182,7 +1182,6 @@ else: print('?')
 
 DTBCPUOC() {
     local DTB="$1" OPP_BASE="$2" OPP_BIN_PROP="$3"
-    AssertBinDetected "$OPP_BIN_PROP" || return
 
     # Current state
     local IS_ACTIVE=0
@@ -1200,8 +1199,14 @@ DTBCPUOC() {
         STATE_MSG="Status: not active — DTB patch required\n\n"
     fi
 
+    local CPU_OC_BODY="Silicon quality varies — not all R36S units are equal.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup."
+    if [ "$OPP_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
+            --msgbox "${STATE_MSG}${CPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 62 > "$CURR_TTY"
+        return
+    fi
     dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
-        --yesno "${STATE_MSG}Silicon quality varies — not all R36S units are equal.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup.\n\nContinue?" 19 62 > "$CURR_TTY"
+        --yesno "${STATE_MSG}${CPU_OC_BODY}\n\nContinue?" 19 62 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full hardware range 950–1350 mV, 12.5 mV steps
@@ -1291,7 +1296,6 @@ DTBGPUOC() {
     # Detect GPU bin level — dmesg → cache → generic
     local GPU_BIN_PROP; GPU_BIN_PROP=$(DetectOPPBinProp "gpu|ff400000|mali")
     local GPU_BIN=""; [[ "$GPU_BIN_PROP" == *-L* ]] && GPU_BIN="${GPU_BIN_PROP##*-}"
-    AssertBinDetected "$GPU_BIN_PROP" || return
 
     # Current state
     local IS_ACTIVE=0
@@ -1309,8 +1313,14 @@ DTBGPUOC() {
         STATE_MSG="Status: not active — DTB patch required\n\n"
     fi
 
+    local GPU_OC_BODY="Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics."
+    if [ "$GPU_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ GPU OC — 600 MHz ]" \
+            --msgbox "${STATE_MSG}${GPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 20 58 > "$CURR_TTY"
+        return
+    fi
     dialog --backtitle "$BACKTITLE" --title "[ GPU OC — 600 MHz ]" \
-        --yesno "${STATE_MSG}Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics.\n\nContinue?" 18 58 > "$CURR_TTY"
+        --yesno "${STATE_MSG}${GPU_OC_BODY}\n\nContinue?" 18 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full vdd_logic range 950–1150 mV, 12.5 mV steps
@@ -1391,7 +1401,6 @@ DTBRAMOC() {
     # Detect bin level — dmesg → cache → generic
     local DMC_BIN_PROP; DMC_BIN_PROP=$(DetectOPPBinProp "dmc")
     local DMC_BIN=""; [[ "$DMC_BIN_PROP" == *-L* ]] && DMC_BIN="${DMC_BIN_PROP##*-}"
-    AssertBinDetected "$DMC_BIN_PROP" || return
 
     # Current state — available_frequencies contains 928000000 if OPP active
     local IS_ACTIVE=0
@@ -1409,8 +1418,14 @@ DTBRAMOC() {
         STATE_MSG="Status: not active — DTB patch required\n\n"
     fi
 
+    local DMC_OC_BODY="ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change."
+    if [ "$DMC_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ DMC / RAM OC — 928 MHz ]" \
+            --msgbox "${STATE_MSG}${DMC_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 60 > "$CURR_TTY"
+        return
+    fi
     dialog --backtitle "$BACKTITLE" --title "[ DMC / RAM OC — 928 MHz ]" \
-        --yesno "${STATE_MSG}ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change.\n\nContinue?" 19 60 > "$CURR_TTY"
+        --yesno "${STATE_MSG}${DMC_OC_BODY}\n\nContinue?" 19 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full hardware range 950–1150 mV, 12.5 mV steps
