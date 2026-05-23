@@ -2153,6 +2153,12 @@ ExitMenu() {
 MainMenu() {
     local LAST_CHOICE=""
     while true; do
+        if [ -f /tmp/gpu_bench_pending ]; then
+            local PENDING_MSG; PENDING_MSG=$(cat /tmp/gpu_bench_pending)
+            rm -f /tmp/gpu_bench_pending
+            dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULTADO ]" \
+                --msgbox "${PENDING_MSG}" 12 52 > "$CURR_TTY"
+        fi
         local PROF_STATUS="✗ off"
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
@@ -2229,14 +2235,6 @@ if [ -f "$DTB_RESTORED" ]; then
     dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — AUTO-RESTORED ]" \
         --msgbox "Previous DTB undervolt caused instability.\nOriginal DTB was restored automatically.\n\nSafety service has been disabled.\nTry a smaller voltage offset next time." \
         9 58 > "$CURR_TTY"
-fi
-
-# Show pending GPU bench result from previous run
-if [ -f /tmp/gpu_bench_pending ]; then
-    PENDING_MSG=$(cat /tmp/gpu_bench_pending)
-    rm -f /tmp/gpu_bench_pending
-    dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULTADO ]" \
-        --msgbox "${PENDING_MSG}" 12 52 > "$CURR_TTY"
 fi
 
 trap ExitMenu EXIT
