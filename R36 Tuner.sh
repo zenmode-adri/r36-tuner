@@ -620,7 +620,7 @@ CPUTuningMenu() {
     done <<< "$AVAIL"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 8 )); [ $H -gt 20 ] && H=20
+    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
@@ -658,7 +658,7 @@ CPUMinFreqMenu() {
     done <<< "$(echo "$AVAIL" | sort -n)"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 8 )); [ $H -gt 20 ] && H=20
+    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
@@ -715,7 +715,7 @@ GovernorMenu() {
                  --title "[ CPU GOVERNOR ]" \
                  --default-item "$CUR_GOV" \
                  --menu "★ = active  |  Save Profile to persist at boot" \
-                 $(( GOV_COUNT + 8 )) 58 $GOV_COUNT \
+                 $(( GOV_COUNT + 7 )) 58 $GOV_COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -748,7 +748,7 @@ GPUTuningMenu() {
     done <<< "$AVAIL"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 8 )); [ $H -gt 20 ] && H=20
+    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
