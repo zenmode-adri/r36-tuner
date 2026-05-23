@@ -461,7 +461,7 @@ DTBGPUUndervoltMenu() {
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — UNIFORM ]" \
             --menu "Applied to ${N} OPPs  |  Step: 12.5 mV\nFloor: 950 mV (vdd_logic PMIC min)\nStart conservative — go down gradually." \
-            19 62 10 \
+            19 50 10 \
             "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
         [ -z "$OFFSET_UV" ] && return
@@ -499,7 +499,7 @@ DTBGPUUndervoltMenu() {
             FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ GPU FINE TUNE — SELECT OPP ]" \
                 --ok-label "Tune" --cancel-label "Cancel" \
                 --menu "Select frequency to tune:" \
-                $(( N + 8 )) 65 $(( N + 1 )) \
+                $(( N + 8 )) 52 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && return
@@ -526,7 +526,7 @@ DTBGPUUndervoltMenu() {
                 --title "[ GPU FINE TUNE — ${GPU_FREQS_MHZ[$IDX]} MHz ]" \
                 --default-item "$cur_off" \
                 --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelect offset:" \
-                18 60 10 \
+                18 50 10 \
                 "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && continue
@@ -808,7 +808,7 @@ DTBUndervoltMenu() {
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "OPP voltage patch and frequency unlock — reboot required" \
-        $(( DTB_ITEMS + 7 )) 62 $DTB_ITEMS \
+        $(( DTB_ITEMS + 7 )) 60 $DTB_ITEMS \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
         "oc"      "CPU OC 1608 MHz — unlock via DTB${OC_STATUS}" \
@@ -824,7 +824,7 @@ DTBUndervoltMenu() {
     if [ "$ACTION" = "help" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ EMERGENCY RECOVERY ]" \
             --msgbox "IF DEVICE WON'T BOOT after DTB undervolt:\n\n1. Power off the R36S\n2. Remove the system SD card\n3. Plug SD into PC via card reader\n4. Open the FAT32 partition (= /boot)\n   If not visible: use DiskGenius (free)\n5. Inside /boot you will find:\n     rk3326-r36s-linux.dtb      <- bad\n     rk3326-r36s-linux.dtb.bak  <- original\n6. Copy .bak over .dtb (overwrite)\n7. Delete .r36_dtb_patch_booting if exists\n8. Eject SD, reinsert, boot\n\nThe .bak is always the pre-patch original.\nSafety service auto-restores if boot hangs\nbut cannot act if kernel panics early." \
-            21 62 > "$CURR_TTY"
+            21 58 > "$CURR_TTY"
         return
     fi
 
@@ -1012,7 +1012,7 @@ else: print('?')
     PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — PATCH ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "${TABLE}\nSelect patch mode:" \
-        $MODE_H 60 2 \
+        $MODE_H 58 2 \
         "uniform" "Uniform — same offset for all frequencies" \
         "fine"    "Fine tune — per-frequency, 12.5 mV steps" \
         2>&1 > "$CURR_TTY")
@@ -1038,7 +1038,7 @@ else: print('?')
         local OFFSET_UV
         OFFSET_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DTB UNDERVOLT — UNIFORM OFFSET ]" \
             --menu "Applied to all ${N} OPPs  |  Step: 12.5 mV\nFloor: 950 mV (PMIC min)\nStart conservative — go down gradually." \
-            19 62 10 \
+            19 50 10 \
             "${OFF_ITEMS[@]}" \
             2>&1 > "$CURR_TTY")
         [ -z "$OFFSET_UV" ] && return
@@ -1078,7 +1078,7 @@ else: print('?')
             FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — SELECT FREQUENCY ]" \
                 --ok-label "Tune" --cancel-label "Cancel" \
                 --menu "Select frequency to adjust:" \
-                $(( N + 8 )) 65 $(( N + 1 )) \
+                $(( N + 8 )) 52 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && return
@@ -1105,7 +1105,7 @@ else: print('?')
             FREQ_OFFSET=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — ${freq_mhz} MHz ]" \
                 --default-item "$cur_off" \
                 --menu "Stock: ${stock_mv} mV  |  Floor: 950 mV (PMIC)\nSelect offset:" \
-                18 60 10 \
+                18 50 10 \
                 "${FT_OFF_ITEMS[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && continue
@@ -1206,11 +1206,11 @@ DTBCPUOC() {
     local CPU_OC_BODY="Silicon quality varies — not all R36S units are equal.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup."
     if [ "$OPP_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
         dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
-            --msgbox "${STATE_MSG}${CPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 62 > "$CURR_TTY"
+            --msgbox "${STATE_MSG}${CPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 58 > "$CURR_TTY"
         return
     fi
     dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
-        --yesno "${STATE_MSG}${CPU_OC_BODY}\n\nContinue?" 19 62 > "$CURR_TTY"
+        --yesno "${STATE_MSG}${CPU_OC_BODY}\n\nContinue?" 19 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Voltage selection — full hardware range 950–1350 mV, 12.5 mV steps
@@ -1225,7 +1225,7 @@ DTBCPUOC() {
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — VOLTAGE @ 1608 MHz ]" \
         --menu "Stock 1512 MHz = ${STOCK_MV} mV (your chip)\nStart high — go down gradually.\nToo low = may not boot (safety service helps)." \
-        19 62 10 \
+        19 52 10 \
         "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
@@ -1341,7 +1341,7 @@ DTBGPUOC() {
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU OC — VOLTAGE @ 600 MHz ]" \
         --menu "Stock 520 MHz = ${STOCK_GPU_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
-        19 62 10 \
+        19 52 10 \
         "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
@@ -1446,7 +1446,7 @@ DTBRAMOC() {
     local VOLT_UV
     VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — VOLTAGE @ 928 MHz ]" \
         --menu "Stock 786 MHz = ${STOCK_DMC_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
-        19 62 10 \
+        19 52 10 \
         "${VOLT_ITEMS[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
@@ -1622,7 +1622,7 @@ CSRC
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
         --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}" \
-        9 62 > "$CURR_TTY"
+        9 58 > "$CURR_TTY"
 }
 
 BenchmarkRAM() {
@@ -2024,7 +2024,7 @@ BenchmarkMenu() {
                         --ok-label "Run" \
                         --cancel-label "Back" \
                         --menu "Select test to run" \
-                        16 62 10 \
+                        16 56 10 \
                         1  "CPU           — int ALU               (~10s)" \
                         2  "RAM           — memset+memcpy         (~6s)" \
                         3  "GPU           — glmark2-es2-drm        (~1min)" \
@@ -2175,7 +2175,7 @@ fi
 if [ -f "${CONFIG_FILE}.failed" ]; then
     dialog --backtitle "$BACKTITLE" --title "[ BOOT PROFILE FAILED ]" \
         --yesno "Last boot: profile caused a hang and was auto-disabled.\n\nFailed config: ${CONFIG_FILE}.failed\n\nDelete the failed config file?" \
-        9 62 > "$CURR_TTY"
+        9 60 > "$CURR_TTY"
     [ $? -eq 0 ] && rm -f "${CONFIG_FILE}.failed"
 fi
 
