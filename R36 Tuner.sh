@@ -2082,7 +2082,7 @@ ValidateGPUUndervolt() {
     local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
     local TMPF=/tmp/r36_gpu_temps_$$
     ( while true; do
-        printf "%s %s\n" "$(GetTempC)" "$(GetGPUCurMHz)"
+        printf "%s %s %s\n" "$(GetTempC)" "$(GetGPUCurMHz)" "$(GetRegVoltMV "$VDD_LOGIC")"
         sleep 2
     done ) > "$TMPF" 2>/dev/null &
     local SAMPLER_PID=$!
@@ -2092,13 +2092,14 @@ ValidateGPUUndervolt() {
 
     kill "$SAMPLER_PID" 2>/dev/null; wait "$SAMPLER_PID" 2>/dev/null
 
-    local T_INIT="?" T_MAX=0 T_SUM=0 T_CNT=0 GPU_PEAK=0
-    while read -r t g; do
+    local T_INIT="?" T_MAX=0 T_SUM=0 T_CNT=0 GPU_PEAK=0 VL_PEAK=0
+    while read -r t g v; do
         [[ "$t" =~ ^[0-9]+$ ]] || continue
         [ $T_CNT -eq 0 ] && T_INIT=$t
         [ "$t" -gt "$T_MAX" ] && T_MAX=$t
         T_SUM=$(( T_SUM + t )); T_CNT=$(( T_CNT + 1 ))
         [[ "$g" =~ ^[0-9]+$ ]] && [ "$g" -gt "$GPU_PEAK" ] && GPU_PEAK=$g
+        [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -gt "$VL_PEAK" ] && VL_PEAK=$v
     done < "$TMPF"
     rm -f "$TMPF"
     local T_AVG="?"; [ $T_CNT -gt 0 ] && T_AVG=$(( T_SUM / T_CNT ))
@@ -2112,7 +2113,8 @@ ValidateGPUUndervolt() {
     local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
 
     if [ -n "$FPS" ]; then
-        local GPU_MV; GPU_MV=$(GetRegVoltMV "$VDD_LOGIC")
+        local GPU_MV="${VL_PEAK}"
+        [ "$VL_PEAK" -eq 0 ] && GPU_MV=$(GetRegVoltMV "$VDD_LOGIC")
         local VERDICT="STABLE"
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
         echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  GPU=${GPU_MHZ}MHz  vdd_logic=${GPU_MV}mV  ${TEMP_DISP}" >> "$SCORES_FILE"
