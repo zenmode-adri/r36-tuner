@@ -627,7 +627,7 @@ CPUTuningMenu() {
                  --title "[ CPU MAX FREQUENCY ]" \
                  --default-item "$CUR_MAX" \
                  --menu "★ = current" \
-                 $H 62 $COUNT \
+                 $H 40 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -665,7 +665,7 @@ CPUMinFreqMenu() {
                  --title "[ CPU MIN FREQUENCY ]" \
                  --default-item "$CUR_MIN" \
                  --menu "Floor freq when idle  |  Max is $(( CUR_MAX / 1000 )) MHz  |  ★ = current" \
-                 $H 62 $COUNT \
+                 $H 58 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -715,7 +715,7 @@ GovernorMenu() {
                  --title "[ CPU GOVERNOR ]" \
                  --default-item "$CUR_GOV" \
                  --menu "★ = active  |  Save Profile to persist at boot" \
-                 $(( GOV_COUNT + 6 )) 62 $GOV_COUNT \
+                 $(( GOV_COUNT + 6 )) 54 $GOV_COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -755,7 +755,7 @@ GPUTuningMenu() {
                  --title "[ GPU MAX FREQUENCY ]" \
                  --default-item "$CUR_MAX" \
                  --menu "devfreq: $(basename "$GPU_DEVFREQ")  |  ★ = current" \
-                 $H 60 $COUNT \
+                 $H 48 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
