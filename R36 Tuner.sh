@@ -45,10 +45,15 @@ FindDMCDevfreq() {
 BIN_CACHE_FILE="/etc/r36_tuner_bin"
 
 # Returns "opp-microvolt-LX" for the active bin, or "opp-microvolt" as safe fallback.
-# Priority: dmesg (saves to cache) → cache file → generic (no guessing).
+# Priority: cache file → dmesg (saves to cache) → generic (no guessing).
+# Bin is a silicon property (PVTM leakage) — never changes, cache is always valid.
 # Arg 1 (optional): extra dmesg pattern to try first (e.g. "gpu|ff400000|mali", "dmc").
 DetectOPPBinProp() {
     local extra_pat="$1" bin=""
+    if [ -f "$BIN_CACHE_FILE" ]; then
+        bin=$(grep -o 'L[0-9]' "$BIN_CACHE_FILE" 2>/dev/null | head -1)
+        [ -n "$bin" ] && echo "opp-microvolt-${bin}" && return
+    fi
     [ -n "$extra_pat" ] && \
         bin=$(dmesg 2>/dev/null | grep -iE "$extra_pat" \
             | grep "opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
@@ -58,10 +63,6 @@ DetectOPPBinProp() {
     if [ -n "$bin" ]; then
         echo "$bin" > "$BIN_CACHE_FILE" 2>/dev/null
         echo "opp-microvolt-${bin}"; return
-    fi
-    if [ -f "$BIN_CACHE_FILE" ]; then
-        bin=$(grep -o 'L[0-9]' "$BIN_CACHE_FILE" 2>/dev/null | head -1)
-        [ -n "$bin" ] && echo "opp-microvolt-${bin}" && return
     fi
     echo "opp-microvolt"
 }
@@ -92,16 +93,16 @@ GPTOKEYB_CFG="/opt/inttools/keys.gptk"
 
 # ── UI Setup ─────────────────────────────────────────────────────────────────
 
-sudo chmod 666 "$CURR_TTY"
-sudo chmod 666 /dev/uinput
+chmod 666 "$CURR_TTY"
+chmod 666 /dev/uinput
 printf "\033c" > "$CURR_TTY"
 printf "\e[?25l" > "$CURR_TTY"
 dialog --clear
 
 if [[ ! -e "/dev/input/by-path/platform-odroidgo2-joypad-event-joystick" ]]; then
-    sudo setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz
+    setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz
 else
-    sudo setfont /usr/share/consolefonts/Lat7-Terminus16.psf.gz
+    setfont /usr/share/consolefonts/Lat7-Terminus16.psf.gz
 fi
 
 # ── Data Readers ──────────────────────────────────────────────────────────────
