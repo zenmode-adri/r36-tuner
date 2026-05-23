@@ -1593,7 +1593,7 @@ MonitorMenu() {
 # ── Benchmark ─────────────────────────────────────────────────────────────────
 
 BenchmarkCPU() {
-    local CPU_BENCH=/tmp/r36_cpubench
+    local CPU_BENCH=/tmp/r36_cpubench_30s
 
     # Compile benchmark on first use
     if [ ! -x "$CPU_BENCH" ] && ! command -v gcc >/dev/null 2>&1; then
@@ -1603,7 +1603,7 @@ BenchmarkCPU() {
         return
     fi
     if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
-        cat > /tmp/r36_cpubench.c << 'CSRC'
+        cat > /tmp/r36_cpubench_30s.c << 'CSRC'
 #include <stdio.h>
 #include <time.h>
 int main() {
@@ -1616,16 +1616,16 @@ int main() {
             x = x * 1664525u + 1013904223u;
         iters += 10000000;
         clock_gettime(CLOCK_MONOTONIC, &t1);
-    } while ((t1.tv_sec - t0.tv_sec) < 10);
+    } while ((t1.tv_sec - t0.tv_sec) < 30);
     printf("%lld\n", iters);
     return 0;
 }
 CSRC
-        gcc -O2 -o "$CPU_BENCH" /tmp/r36_cpubench.c 2>/dev/null
+        gcc -O2 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-        --infobox "Integer ALU benchmark...\nPlease wait ~10s" 5 40 > "$CURR_TTY"
+        --infobox "Integer ALU benchmark...\nPlease wait ~30s" 5 40 > "$CURR_TTY"
 
     local GOV_PREV; GOV_PREV=$(GetGOV)
     echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
@@ -1635,7 +1635,7 @@ CSRC
         local raw; raw=$("$CPU_BENCH" 2>/dev/null)
         if [ -n "$raw" ] && [ "$raw" -gt 0 ] 2>/dev/null; then
             SCORE=$(( raw / 1000000 ))
-            SCORE_DISP="${SCORE} Mops/10s"
+            SCORE_DISP="${SCORE} Mops/30s"
         fi
     fi
 
@@ -1647,7 +1647,7 @@ CSRC
             local DIFF=$(( PCT - 100 ))
             local SIGN="+"
             [ $DIFF -lt 0 ] && SIGN=""
-            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} Mops/10s)"
+            REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} Mops/30s)"
         fi
     else
         echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
@@ -1671,7 +1671,7 @@ CSRC
 }
 
 BenchmarkRAM() {
-    local RAM_BENCH=/tmp/r36_rambench
+    local RAM_BENCH=/tmp/r36_rambench_30s
 
     if [ ! -x "$RAM_BENCH" ] && ! command -v gcc >/dev/null 2>&1; then
         dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — RAM ]" \
@@ -1680,13 +1680,13 @@ BenchmarkRAM() {
         return
     fi
     if [ ! -x "$RAM_BENCH" ]; then
-        cat > /tmp/r36_rambench.c << 'CSRC'
+        cat > /tmp/r36_rambench_30s.c << 'CSRC'
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #define BUF (128*1024*1024)
-#define DUR 3
+#define DUR 15
 int main() {
     char *a = malloc(BUF), *b = malloc(BUF);
     if (!a || !b) { puts("0\n0"); return 1; }
@@ -1711,11 +1711,11 @@ int main() {
     return 0;
 }
 CSRC
-        gcc -O2 -o "$RAM_BENCH" /tmp/r36_rambench.c 2>/dev/null
+        gcc -O2 -o "$RAM_BENCH" /tmp/r36_rambench_30s.c 2>/dev/null
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — RAM ]" \
-        --infobox "Memory bandwidth (write + copy)...\nPlease wait ~6s" 5 50 > "$CURR_TTY"
+        --infobox "Memory bandwidth (write + copy)...\nPlease wait ~30s" 5 50 > "$CURR_TTY"
 
     local RW="N/A" RC="N/A"
     if [ -x "$RAM_BENCH" ]; then
@@ -2085,8 +2085,8 @@ BenchmarkMenu() {
                         --default-item "$LAST_CHOICE" \
                         --menu "Select test to run" \
                         17 58 10 \
-                        1  "CPU           — int ALU               (~10s)" \
-                        2  "RAM           — memset+memcpy         (~6s)" \
+                        1  "CPU           — int ALU               (~30s)" \
+                        2  "RAM           — memset+memcpy         (~30s)" \
                         3  "GPU           — glmark2-es2-drm        (~1min)" \
                         4  "All           — CPU + RAM + GPU" \
                         5  "CPU Stress    — 5min full load, abort 85°C" \
