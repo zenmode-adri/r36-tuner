@@ -817,7 +817,7 @@ DTBUndervoltMenu() {
         "help"    "Emergency recovery — if device won't boot" \
         "${RESTORE_OPT[@]}" \
         2>&1 > "$CURR_TTY")
-    [ -z "$ACTION" ] && return
+    [ -z "$ACTION" ] && return 1
 
     # Emergency recovery — no setup needed
     if [ "$ACTION" = "help" ]; then
@@ -1969,37 +1969,39 @@ ValidateGPUUndervolt() {
 }
 
 BenchmarkMenu() {
-    local CHOICE
-    CHOICE=$(dialog --backtitle "$BACKTITLE" \
-                    --title "[ BENCHMARK ]" \
-                    --ok-label "Run" \
-                    --cancel-label "Back" \
-                    --menu "Select test to run" \
-                    16 62 10 \
-                    1  "CPU           — int ALU               (~10s)" \
-                    2  "RAM           — 128MB r/w             (~8s)" \
-                    3  "GPU           — glmark2-es2-drm        (~1min)" \
-                    4  "All           — CPU + RAM + GPU" \
-                    5  "CPU Stress    — 5min full load, abort 85°C" \
-                    6  "Validate CPU  — benchmark + stress + verdict" \
-                    7  "Validate GPU UV — terrain ~30s + verdict" \
-                    8  "Set Baseline  — mark next CPU run as 100%" \
-                    9  "View History  — scrollable, all entries" \
-                    10 "Clear History — delete log and baseline" \
-                    2>&1 > "$CURR_TTY")
-    [ $? -ne 0 ] && return
-    case $CHOICE in
-        1)  BenchmarkCPU ;;
-        2)  BenchmarkRAM ;;
-        3)  BenchmarkGPU ;;
-        4)  BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
-        5)  StressTestCPU ;;
-        6)  ValidateUndervolt ;;
-        7)  ValidateGPUUndervolt ;;
-        8)  BenchmarkSetBaseline ;;
-        9)  BenchmarkViewHistory ;;
-        10) BenchmarkClearHistory ;;
-    esac
+    while true; do
+        local CHOICE
+        CHOICE=$(dialog --backtitle "$BACKTITLE" \
+                        --title "[ BENCHMARK ]" \
+                        --ok-label "Run" \
+                        --cancel-label "Back" \
+                        --menu "Select test to run" \
+                        16 62 10 \
+                        1  "CPU           — int ALU               (~10s)" \
+                        2  "RAM           — 128MB r/w             (~8s)" \
+                        3  "GPU           — glmark2-es2-drm        (~1min)" \
+                        4  "All           — CPU + RAM + GPU" \
+                        5  "CPU Stress    — 5min full load, abort 85°C" \
+                        6  "Validate CPU  — benchmark + stress + verdict" \
+                        7  "Validate GPU UV — terrain ~30s + verdict" \
+                        8  "Set Baseline  — mark next CPU run as 100%" \
+                        9  "View History  — scrollable, all entries" \
+                        10 "Clear History — delete log and baseline" \
+                        2>&1 > "$CURR_TTY")
+        [ $? -ne 0 ] && return
+        case $CHOICE in
+            1)  BenchmarkCPU ;;
+            2)  BenchmarkRAM ;;
+            3)  BenchmarkGPU ;;
+            4)  BenchmarkCPU; BenchmarkRAM; BenchmarkGPU ;;
+            5)  StressTestCPU ;;
+            6)  ValidateUndervolt ;;
+            7)  ValidateGPUUndervolt ;;
+            8)  BenchmarkSetBaseline ;;
+            9)  BenchmarkViewHistory ;;
+            10) BenchmarkClearHistory ;;
+        esac
+    done
 }
 
 # ── Save / Reset / View Profile ───────────────────────────────────────────────
@@ -2090,7 +2092,7 @@ MainMenu() {
             2)  CPUMinFreqMenu ;;
             3)  GovernorMenu ;;
             4)  GPUTuningMenu ;;
-            5)  DTBUndervoltMenu ;;
+            5)  while DTBUndervoltMenu; do :; done ;;
             6)  MonitorMenu ;;
             7)  BenchmarkMenu ;;
             8)  SaveProfileMenu ;;
