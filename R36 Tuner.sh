@@ -2087,7 +2087,7 @@ ValidateGPUUndervolt() {
     sleep 1
 
     local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
-    local GPU_MHZ; GPU_MHZ=$(GetGPUCurMHz)
+    local GPU_MHZ; GPU_MHZ=$(GetGPUMaxMHz)
     local TEMP; TEMP=$(GetTempC)
 
     if [ -n "$FPS" ]; then
