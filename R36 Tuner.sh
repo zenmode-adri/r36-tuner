@@ -620,13 +620,15 @@ CPUTuningMenu() {
     done <<< "$AVAIL"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+    local PROMPT="★ = current"
+    local PROMPT_LINES=$(( $(printf '%s' "$PROMPT" | tr -cd '\n' | wc -c) + 1 ))
+    local H=$(( COUNT + 6 + PROMPT_LINES )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ CPU MAX FREQUENCY ]" \
                  --default-item "$CUR_MAX" \
-                 --menu "★ = current" \
+                 --menu "$PROMPT" \
                  $H 46 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
@@ -658,13 +660,15 @@ CPUMinFreqMenu() {
     done <<< "$(echo "$AVAIL" | sort -n)"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+    local PROMPT="Floor freq when idle  |  Max is $(( CUR_MAX / 1000 )) MHz  |  ★ = current"
+    local PROMPT_LINES=$(( $(printf '%s' "$PROMPT" | tr -cd '\n' | wc -c) + 1 ))
+    local H=$(( COUNT + 6 + PROMPT_LINES )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ CPU MIN FREQUENCY ]" \
                  --default-item "$CUR_MIN" \
-                 --menu "Floor freq when idle  |  Max is $(( CUR_MAX / 1000 )) MHz  |  ★ = current" \
+                 --menu "$PROMPT" \
                  $H 58 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
@@ -710,12 +714,15 @@ GovernorMenu() {
     done
 
     local GOV_COUNT=$(( ${#CHOICES[@]} / 2 ))
+    local PROMPT="★ = active  |  Save Profile to persist at boot"
+    local PROMPT_LINES=$(( $(printf '%s' "$PROMPT" | tr -cd '\n' | wc -c) + 1 ))
+    local H=$(( GOV_COUNT + 6 + PROMPT_LINES )); [ $H -gt 20 ] && H=20
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ CPU GOVERNOR ]" \
                  --default-item "$CUR_GOV" \
-                 --menu "★ = active  |  Save Profile to persist at boot" \
-                 $(( GOV_COUNT + 7 )) 58 $GOV_COUNT \
+                 --menu "$PROMPT" \
+                 $H 58 $GOV_COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -748,13 +755,15 @@ GPUTuningMenu() {
     done <<< "$AVAIL"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+    local PROMPT="devfreq: $(basename "$GPU_DEVFREQ")  |  ★ = current"
+    local PROMPT_LINES=$(( $(printf '%s' "$PROMPT" | tr -cd '\n' | wc -c) + 1 ))
+    local H=$(( COUNT + 6 + PROMPT_LINES )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ GPU MAX FREQUENCY ]" \
                  --default-item "$CUR_MAX" \
-                 --menu "devfreq: $(basename "$GPU_DEVFREQ")  |  ★ = current" \
+                 --menu "$PROMPT" \
                  $H 48 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
