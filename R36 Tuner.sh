@@ -1,5 +1,5 @@
 #!/bin/bash
-# R36 Tuner v3.6 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v3.7 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
@@ -1618,8 +1618,8 @@ BenchmarkRAM() {
 }
 
 InstallGlmark2Legacy() {
-    local dst="/tmp/glmark2-es2-drm-legacy"
-    local data_dst="/tmp/glmark2data"
+    local dst="/usr/local/bin/glmark2-es2-drm-legacy"
+    local data_dst="/usr/local/share/glmark2data"
     [ -x "$dst" ] && [ -d "$data_dst/shaders" ] && return 0
 
     dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
@@ -1892,7 +1892,7 @@ ValidateUndervolt() {
 ValidateGPUUndervolt() {
     InstallGlmark2Legacy || return 1
 
-    local LEGACY_BIN="/tmp/glmark2-es2-drm-legacy"
+    local LEGACY_BIN="/usr/local/bin/glmark2-es2-drm-legacy"
     local DTB_ST; DTB_ST=$(GetDTBStatus)
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
         --yesno "Test GPU undervolt — terrain ON-SCREEN (~30s).\n\nDTB: ${DTB_ST}\nScreen shows spinning 3D terrain.\nArtifacts / freeze / crash = unstable.\n\nContinue?" 11 58 > "$CURR_TTY"
@@ -1907,7 +1907,7 @@ ValidateGPUUndervolt() {
     sleep 1
 
     local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
-    echo ark | sudo -S "$LEGACY_BIN" --data-path /tmp/glmark2data \
+    echo ark | sudo -S "$LEGACY_BIN" --data-path /usr/local/share/glmark2data \
         --size 320x240 -b terrain:duration=30 > "$GL_LOG" 2>&1
 
     echo ark | sudo -S systemctl start emulationstation 2>/dev/null
