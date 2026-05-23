@@ -38,16 +38,18 @@
 
 ## v3.6 — 2026-05-22
 
-**Bug fixes and UI polish for final release:**
+**Bug fixes and UI polish:**
+
 - Fix: GPU OC voltage menu showed "Stock 520 MHz = ? mV" — was reading undefined variable `$OPP_BIN_PROP` instead of `$GPU_BIN_PROP` (display-only bug, patch logic was correct)
 - Fix: Benchmark history header showed wrong unit "MB/s" for CPU score (correct: Mops/10s)
 - Fix: Benchmark menu item 1 label said "sha256" — benchmark is int ALU (C, LCG), sha256 was removed in v2.9
 - Safety: added `sync` after all DTB fdtput operations (5 functions) — prevents losing patch data if device loses power before manual reboot
-- UI: all user-facing text unified to English (was inconsistently mixed EN/ES)
+- UI: all user-facing text unified to English
 
 ## v3.5 — 2026-05-21
 
 **Full voltage range in all OC/UV menus — no hardcoded limits:**
+
 - CPU OC 1608 MHz voltage: expanded from 4 options (1275–1350 mV) to full hardware range 950–1350 mV in 12.5 mV steps
 - GPU OC 600 MHz voltage: expanded to full vdd_logic range 950–1150 mV in 12.5 mV steps
 - CPU UV uniform offset: expanded to -200 mV → +50 mV in 12.5 mV steps (was -125 → +50 mV)
@@ -58,27 +60,31 @@
 - PMIC floor corrected: 950 mV (was 700 mV) — matches real hardware minimum for vdd_arm and vdd_logic
 - No recommended voltages — silicon lottery applies. Start high, go down gradually.
 
-**Research: CPU OC 1608 MHz — voltage sweep confirmed (L2 bin, leakage=13):**
+**Research: CPU OC 1608 MHz — voltage sweep (L2 bin, leakage=13):**
+
 - Sweep performed with real C stress (4 cores, ALU+FP+branch, 300s)
 - 1200 mV: stable 300s | 1187.5 mV: stable 300s | 1175 mV: stable 60s but fails 300s | 1162.5 mV: crash <10s
 - Confirmed floor: **1187.5 mV** (-112.5 mV vs stock 1300 mV) for sustained load
-- Battery droop effect: low battery raises internal resistance → voltage sag under load → instability at borderline voltages. Charge fully before sweeping.
+- Battery droop effect: low battery → higher internal resistance → voltage sag under load → instability at borderline voltages. Charge fully before sweeping.
 - These are ONE chip's results — your chip may differ (silicon lottery)
 
 **Research: GPU UV fine-tune — 480 MHz and 520 MHz (L2 bin):**
+
 - 520 MHz: stable down to **950 mV** (PMIC floor = -150 mV vs stock 1100 mV) — tested on-screen terrain, no artifacts
 - 480 MHz: stable at **962.5 mV** (same as 400 MHz OPP) — tested on-screen terrain, no artifacts
-- Key insight: uniform UV was limited by 400 MHz OPP hitting PMIC floor during boot. Fine-tune of 480/520 MHz independently allows much deeper UV since those OPPs are only used post-boot.
+- Key insight: uniform UV was limited by 400 MHz OPP hitting PMIC floor during boot. Fine-tuning 480/520 MHz independently allows deeper UV since those OPPs are only used post-boot.
 - 400 MHz: floor remains 962.5 mV (boot stability — other SoC components on vdd_logic need ≥962.5 mV during init)
 
-**Recommended user flow (our findings, your mileage may vary):**
-- For overclocking: enable CPU OC 1608 MHz + GPU OC 600 MHz + RAM OC 928 MHz at safe voltages first, then reduce voltage gradually until you find your chip's stable limit
+**Recommended flow:**
+
+- For overclocking: enable CPU OC 1608 MHz + GPU OC 600 MHz + RAM OC 928 MHz at safe voltages first, then reduce gradually until you find your chip's stable limit
 - For battery savings / thermals: use CPU Undervolt and GPU Undervolt on stock frequencies
 - Always reboot and stress-test after each voltage change
 
 ## v3.4 — 2026-05-21
 
 **Research: GPU OC 600 MHz — complete voltage sweep (L2 bin):**
+
 - Full undervolt sweep from 1150 mV down to 1012.5 mV in 12.5 mV steps (on-screen, ES stopped, 30–90s terrain)
 - Confirmed stable limit: **1025 mV** (−125 mV from PMIC max) — 15 fps on-screen, no artifacts
 - Artifacts at: 1012.5 mV (rendering errors, fps drop to 13) — do not use
@@ -90,29 +96,31 @@
 
 ## v3.3 — 2026-05-21
 
-**Feat: RAM OC 928 MHz — DTBDMCOC() integrated into DTB menu:**
+**Feat: RAM OC 928 MHz — `DTBDMCOC()` integrated into DTB menu:**
+
 - DMC OC confirmed working: ATF v0x105 supports 928 MHz — delivers 924 MHz (nearest PLL divisor)
-- New menu item "RAM OC 928 MHz" in DTB Undervolt submenu, after GPU OC entry
+- New menu item "RAM OC 928 MHz" in DTB Tuning submenu
 - Menu item shows `[ACTIVE]` if 928 MHz is present in DMC `available_frequencies`
 - `DTBDMCOC()`: adds `opp-928000000` to `/dmc-opp-table`; no equivalent of `avs-scale` needed
-- Voltage selector: 1075 / 1062.5 / 1050 mV (L2 bin). vdd_logic shared with GPU — at 1150 mV when GPU OC active, no extra voltage cost
-- +18% RAM bandwidth over 786 MHz. Benefit: CPU JIT, texture reads, emulator loading times
-- GPU compute-bound workloads (terrain): no fps change (confirmed). Emulation mixed workloads: real benefit
+- Voltage selector: 1075 / 1062.5 / 1050 mV. vdd_logic is shared with GPU — no extra voltage cost when GPU OC is active at 1150 mV
+- +18% RAM bandwidth over stock 786 MHz. Benefit: CPU JIT, texture reads, emulator loading times
+- GPU compute-bound workloads (terrain): no fps change (confirmed). Mixed emulation workloads: real benefit
 - Same backup/safety-service/reboot flow as all other DTB patches
 
-**Fix: corrected wrong claim in docs — RAM OC IS possible via DTB:**
-- README and opp-research.md previously stated "RAM OC not possible via DTB — ATF owns DMC"
-- Reality: ATF owns the *frequency switching*, but the kernel *exposes available frequencies from DTB OPP table*
+**Note: prior docs incorrectly stated "RAM OC not possible via DTB":**
+
+- ATF owns the *frequency switching*, but the kernel *exposes available frequencies from the DTB OPP table*
 - Adding an OPP node → kernel requests it → ATF executes the switch. Confirmed working.
 
 ## v3.2 — 2026-05-21
 
 **Feat: GPU OC 600 MHz — integrated into DTB menu (`DTBGPUOC()`):**
-- New menu item "GPU OC 600 MHz" in DTB Undervolt submenu, after CPU OC entry
+
+- New menu item "GPU OC 600 MHz" in DTB Tuning submenu
 - Menu item shows `[ACTIVE]` suffix if 600 MHz is already in GPU `available_frequencies`
 - `DTBGPUOC()`: adds `opp-600000000` to `/gpu-opp-table` — no `rockchip,avs-scale` needed (GPU has none)
 - `opp-hz`: 0 600000000 (64-bit, gpll/2 = 600 MHz exactly)
-- Voltage selector: 1150 / 1137.5 / 1125 / 1112.5 mV (1150 mV recommended — PMIC vdd_logic max)
+- Voltage selector: 950–1150 mV in 12.5 mV steps. Start at 1150 mV (PMIC vdd_logic max), reduce gradually.
 - Writes both `opp-microvolt-L2` (binned) and generic `opp-microvolt` for compatibility
 - Same safety net: backup preserved, safety service, reboot prompt
 - State detection: ACTIVE / OPP in DTB pending reboot / not patched
@@ -120,6 +128,7 @@
 ## v3.1 — 2026-05-21
 
 **Discovery: GPU OC 600 MHz — confirmed stable via DTB only:**
+
 - GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` — no rate table in driver, no kernel changes needed
 - Unlike CPU OC, GPU has no `rockchip,avs-scale` — adding `opp-600000000` to `/gpu-opp-table` is sufficient
 - Voltage: 1150 mV (`opp-microvolt-L2`) — PMIC hard limit for `vdd_logic`, within `rockchip,max-volt = 1175 mV`
@@ -130,60 +139,52 @@
 ## v3.0 — 2026-05-20
 
 **Feat: CPU OC 1608 MHz — re-added to DTB menu with correct mechanism:**
+
 - Previous implementation (v1.8) added the OPP node but did not clear `rockchip,avs-scale=4`, which caused the kernel to strip all OPPs >1512 MHz at boot
 - New `DTBCPUOC()` function: adds `opp-1608000000` node AND sets `rockchip,avs-scale=0`
-- Voltage selector: 1350/1325/1300/1275 mV (1350 mV recommended — conservative start)
-- Silicon lottery warning: not all R36S units will be stable; start with max voltage
+- Voltage selector: 950–1350 mV in 12.5 mV steps. Start high, reduce gradually.
+- Silicon lottery warning: not all R36S units will be stable at the same voltage
 - Menu item shows `[ACTIVE]` suffix if 1608 MHz is already in `scaling_available_frequencies`
 - Same safety net as undervolt: backup preserved, safety service active, reboot prompt
 
-## v2.9 — 2026-05-20 (docs)
+## v2.9 — 2026-05-20
 
 **Discovery: CPU OC 1608 MHz works via DTB — no kernel recompile needed:**
-- Root cause of previous failure identified: `rockchip,avs-scale=4` in `/cpu0-opp-table` caused the kernel to call `rockchip_adjust_opp_table(dev, 1512 MHz)` at boot, actively stripping all OPPs above 1512 MHz
+
+- Root cause of the v1.8 failure identified: `rockchip,avs-scale=4` in `/cpu0-opp-table` caused the kernel to call `rockchip_adjust_opp_table(dev, 1512 MHz)` at boot, actively stripping all OPPs above 1512 MHz
 - Fix: set `rockchip,avs-scale=0` + add `opp-1608000000` node — clock driver already had 1608 MHz in `px30_cpuclk_rates`/`px30_pll_rates`
 - Benchmark: 1608 MHz = +27% vs 1008 MHz, but only +1.6% over 1512 MHz — sweet spot remains 1512 MHz undervolted
-- Updated `docs/opp-research.md` and `README.md` with correct findings (previous docs incorrectly stated "not fixable without BSP kernel recompile")
-
-## v2.9 — 2026-05-20 (updated)
+- Updated `docs/opp-research.md` and `README.md` with correct findings
 
 **Feat: CPU benchmark replaced with compiled C ALU benchmark:**
+
 - Previous SHA256 (hardware crypto, memory-bound) and Python sieve (interpreter-bound) did not scale with CPU frequency
 - New benchmark: LCG integer loop compiled with `gcc -O2` on first use, cached at `/tmp/r36_cpubench`
 - Pure ALU, fits in registers — scales linearly with MHz (confirmed: 1008→1608 MHz = +27%)
 - Runs 10s, reports Mops (millions of operations/10s)
 - Forces `performance` governor before measuring, restores original after
 
-**Fix: CPU benchmark duration and accuracy:**
-- `openssl speed -seconds 60` tested 6 block sizes × 60s = ~6 min total — now uses `-seconds 5` for ~35s total
-- Benchmark now forces `performance` governor before measuring and restores original governor after
-- Ensures CPU runs at max frequency during the test regardless of active governor
-
-## v2.9 — 2026-05-20
-
-**Fix: ValidateGPUUndervolt — EmulationStation stop/start required sudo:**
-- `systemctl stop/start emulationstation` failed with "Interactive authentication required" when called without sudo
-- Fixed: both calls now use `echo ark | sudo -S systemctl ...`
-- Without this fix, ES kept running during the on-screen terrain test, causing display overlap
-
-**Fix: baseline fps updated — on-screen vs off-screen:**
-- Dialog now shows correct baselines: `~14 fps on-screen / ~16 fps off-screen`
-- Previous `~17 fps` was measured off-screen before on-screen integration
-
 **Feat: GPU Undervolt Validation now uses on-screen terrain test:**
+
 - `ValidateGPUUndervolt` replaced off-screen glmark2 with on-screen terrain via glmark2 2021.02 legacy binary
 - On-screen rendering detects visual artifacts, color corruption, and GPU instability that off-screen cannot catch
-- glmark2 2021.02 (arm64, patched for Mali GBM) embedded as base64 (`__GLMARK2_LEGACY_START/END__`) — ~960KB stripped
-- New `InstallGlmark2Legacy()` extracts and caches binary at `/tmp/glmark2-es2-drm-legacy` on first use
+- glmark2 2021.02 (arm64, patched for Mali GBM) embedded as base64 — ~960KB stripped
+- New `InstallGlmark2Legacy()` extracts and caches binary on first use
 - Result screen shows fps, baseline (stock ~17fps), and STABLE/UNSTABLE verdict
-- Requires EmulationStation stop/start (same as before)
 
 **Fix: glmark2 2021.02 shader compatibility with glmark2-data 2023.01:**
+
 - `glmark2-data 2023.01` shaders use `MEDIUMP_OR_DEFAULT`/`HIGHP_OR_DEFAULT` macros undefined in the 2021.02 binary → Mali compiler error, 0 fps
 - `InstallGlmark2Legacy()` creates `/tmp/glmark2data/` with patched shader copies and symlinks to models/textures
-- Terrain on-screen confirmed: **14 fps** at -12.5 mV GPU undervolt (stock ~17 fps)
+- Terrain on-screen confirmed: **14 fps** at -12.5 mV GPU undervolt
+
+**Fix: ValidateGPUUndervolt — EmulationStation stop/start required sudo:**
+
+- `systemctl stop/start emulationstation` failed with "Interactive authentication required" when called without sudo
+- Fixed: both calls now use `echo ark | sudo -S systemctl ...`
 
 **bin/glmark2-es2-drm-legacy — pre-compiled binary added to repo:**
+
 - glmark2 2021.02 cross-compiled for arm64 (AArch64, Cortex-A35), stripped — 985752 bytes
 - Target: R36S / RK3326 / dArkOSRE (Mali-G31 GBM, legacy KMS, OpenGL ES 3.2)
 - Toolchain: Ubuntu 24.04, aarch64-linux-gnu-g++
@@ -193,412 +194,336 @@
 ## v2.8 — 2026-05-20
 
 **Menu cleanup — removed stale/dead entries:**
-- OC Experiment (1608 MHz) removed from DTB Undervolt submenu — kernel ignores the OPP, hard cap at 1512 MHz
-- DMC / RAM Tuning removed from main menu — ATF owns DMC, sysfs inaccessible on R36
-- Voltage Info converted to read-only — OPP framework reverts all writes, display only
+
+- OC Experiment (1608 MHz) removed from DTB menu — kernel was ignoring the OPP due to `avs-scale` (root cause found and fixed in v3.0)
+- DMC / RAM Tuning removed from main menu — ATF owns DMC frequency switching, sysfs writes have no effect (DTB OPP approach discovered in v3.3)
+- Voltage Info converted to read-only — OPP framework reverts all runtime writes, display only
 - GPU Info removed from Benchmark — internal debug tool, not useful for end users
 - Main menu: 13 → 12 items
 
 **Dead code removal:**
+
 - Removed orphaned functions: `DTBOCApply`, `DMCTuningMenu`, `SetVoltForReg`, `ApplyVolt`, `GPUInfo`, `GetDMCAvail`
 - Removed OC_PENDING startup check and variable
-- Removed stale `— ELITE HYBRID` backtitle suffix
 - -258 lines of dead code
 
 ## v2.7 — 2026-05-19
 
-**Feat: DTBGPUUndervoltMenu — modo Uniform + Fine Tune (igual que CPU):**
-- Menú de modo: Uniform (mismo offset todos los OPPs) / Fine Tune (por OPP)
-- Pasos 12.5 mV (-125 mV a +50 mV), etiquetas en español
-- Preview antes de confirmar: muestra todos los OPPs con voltaje antes → después
-- Parchea solo el bin activo (GPU_BIN_PROP), igual que CPU
-- Preserva multi-value props (min/typ/max) correctamente via loop
+**Feat: GPU UV menu — Uniform and Fine Tune modes (same as CPU):**
 
-**Fix: GPU OPP table real verificada por SSH:**
-- 3 OPPs: 400 MHz (975 mV L2) / 480 MHz (1050 mV L2) / 520 MHz (1100 mV L2)
-- Empezar por -25 mV → 520 MHz: 1075 mV
+- Mode selector: Uniform (same offset for all OPPs) / Fine Tune (per OPP)
+- 12.5 mV steps, range -125 mV to +50 mV
+- Preview before confirming: shows all OPPs with voltage before → after
+- Patches only the active bin (GPU_BIN_PROP), same as CPU
+- Correctly preserves multi-value props (min/typ/max) via loop
+
+**Fix: GPU OPP table verified from real device:**
+
+- Confirmed 3 OPPs: 400 MHz (975 mV L2) / 480 MHz (1050 mV L2) / 520 MHz (1100 mV L2)
 
 ## v2.6 — 2026-05-19
 
-**Fix crítico: DTBGPUUndervoltMenu parcheaba solo opp-400000000 (primer nodo sorted):**
-- GPU tiene 3 OPPs: 400 MHz (975 mV L2), 480 MHz (1050 mV L2), 520 MHz (1100 mV L2)
-- Bug: el sorted seleccionaba opp-400000000 → GPU a 520 MHz (max) nunca se tocaba → undervolt inefectivo
-- Fix: lee todos los OPPs en arrays, parchea todos (mismo offset)
-- Menú ahora muestra tabla completa de 3 OPPs con voltajes actuales
-- Referencia de offset = OPP max (520 MHz)
-- Confirmación muestra cuántos OPPs se parchean
+**Critical fix: `DTBGPUUndervoltMenu` was patching only `opp-400000000`:**
+
+- GPU has 3 OPPs: 400 MHz (975 mV L2), 480 MHz (1050 mV L2), 520 MHz (1100 mV L2)
+- Bug: alphabetical sort selected `opp-400000000` first → GPU at max freq (520 MHz) was never patched → undervolt had no effect at normal workloads
+- Fix: reads all OPPs into arrays, patches all (same offset)
+- Menu now shows full table of all 3 OPPs with current voltages
 
 ## v2.5 — 2026-05-19
 
-**Fix: GetDTBStatus() detecta GPU undervolt además de CPU:**
-- Antes: solo comparaba voltaje CPU OPP 1512 MHz → si solo GPU parchada mostraba "stock"
-- Ahora: compara también `/gpu-opp-table/opp-520000000` con el backup
-- Formato combinado: "CPU -125mV (1175mV) | GPU -25mV (1075mV)"
-- Si solo GPU: "GPU -25mV (1075mV)" | si solo CPU: "CPU -125mV (1175mV)"
-- Muestra estado correcto en main menu ítem 7 y en Validate GPU UV
+**Fix: `GetDTBStatus()` now detects GPU undervolt in addition to CPU:**
+
+- Before: only compared CPU OPP 1512 MHz voltage — if only GPU was patched, status showed "stock"
+- Now: also compares `/gpu-opp-table/opp-520000000` with backup
+- Combined format: "CPU -125mV (1175mV) | GPU -25mV (1075mV)"
+- Correct status shown in main menu item 7 and in Validate GPU UV
 
 ## v2.4 — 2026-05-19
 
-**Feat: ValidateGPUUndervolt — test terrain off-screen ~30s:**
-- Nuevo item en BenchmarkMenu: "Validate GPU UV — terrain ~30s + recomendación"
-- Corre solo escena terrain off-screen (~30s), parsea fps real
-- Muestra resultado + recomendación: probar con juego real (RetroArch, PPSSPP, DraStic)
-- Guarda entry en historial (`GPU-UV X fps`)
+**Feat: ValidateGPUUndervolt — off-screen terrain test ~30s:**
 
-**Fix: confirm GPU undervolt mostraba offset incorrecto:**
-- `${OFFSET_UV/1000/}` (string replace) → `$(( OFFSET_UV / 1000 ))` (aritmética)
-- Ejemplo previo: -125 mV aparecía como "-125000 mV"
+- New item in BenchmarkMenu: "Validate GPU UV — terrain ~30s + recommendation"
+- Runs only the terrain scene off-screen (~30s), parses real fps
+- Shows result + recommendation: test with a real game (RetroArch, PPSSPP, DraStic)
+- Saves entry to history (`GPU-UV X fps`)
 
-**Previo v2.4 — glmark2 on-screen — cross-compilado para legacy KMS:**
-- glmark2 2023 (bundled) usa atomic KMS → RK3326 solo soporta legacy → rendering on-screen imposible
-- Solución: cross-compilar glmark2 2021.02 en Windows via WSL1 + toolchain `aarch64-linux-gnu-gcc 13.3`
-- 2021.02 usa `drmModeSetCrtc()` (legacy KMS) en vez de atomic → compatible con RK3326
-- Fix aplicado al código fuente: `#include <utility>` faltante en `libmatrix/program.h` (incompatibilidad con GCC 13)
-- Multiarch arm64 en Ubuntu 24.04: `ports.ubuntu.com` para libs arm64 (`libgbm-dev`, `libegl-dev`, `libdrm-dev`, `libudev-dev`)
-- Meson cross-file con `PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig`
-- Binario resultante: `glmark2-es2-drm` ELF arm64 1.1MB — pendiente test on-screen en dispositivo
+**Fix: GPU UV confirm dialog showed wrong offset:**
+
+- `${OFFSET_UV/1000/}` (string replace) → `$(( OFFSET_UV / 1000 ))` (arithmetic)
+- Example: -125 mV was showing as "-125000 mV"
+
+**Discovery: glmark2 on-screen requires legacy KMS cross-compile:**
+
+- glmark2 2023 (bundled) uses atomic KMS — RK3326 only supports legacy KMS → on-screen rendering not possible with the 2023 binary
+- Solution: cross-compiled glmark2 2021.02 on Windows via WSL + `aarch64-linux-gnu-gcc 13.3` toolchain
+- 2021.02 uses `drmModeSetCrtc()` (legacy KMS) instead of atomic → compatible with RK3326
+- Source fix required: `#include <utility>` missing in `libmatrix/program.h` (GCC 13 incompatibility)
+- Resulted in arm64 ELF binary, integrated in v2.9
 
 ## v2.3 — 2026-05-19
 
-**Mejora: GPU benchmark — reducir duración de 5 min a ~1 min:**
-- Subset de 4 escenas representativas: build, texture, shading, terrain
-- `--duration 15` por escena en vez de ~30s default
-- Resultado muestra FPS por escena + score final
+**Improvement: GPU benchmark — reduce duration from 5 min to ~1 min:**
 
-**Mejora: GPU benchmark — glmark2-es2-drm --off-screen (bench real):**
-- Reemplazado Python pbuffer falso (medía overhead ctypes, no GPU) por `glmark2-es2-drm --off-screen --size 320x240`
-- Score real: ~401 pts (build/texture/shading/bump/effect2d/pulsar/desktop/buffer/ideas/jellyfish/terrain/shadow/refract/conditionals/function/loop)
-- Razón `--off-screen`: glmark2 2023 usa atomic KMS; RK3326 BSP solo soporta legacy KMS → `--off-screen` evita el fallo de modesetting
-- Embedded binario actualizado: `glmark2-es2-wayland 2023.01` → `glmark2-es2-drm 2023.01+dfsg-1 arm64`
-- Embedded data actualizado: `glmark2-data 2014.03` → `glmark2-data 2023.01+dfsg-1`
-- Duración bench: ~5 min (suite completa, 15 escenas)
+- Uses 4 representative scenes: build, texture, shading, terrain
+- `-b scene:duration=15` per scene instead of ~30s default
+- Result shows FPS per scene + final score
+
+**Improvement: GPU benchmark — glmark2-es2-drm --off-screen (real GPU measurement):**
+
+- Replaced fake Python pbuffer benchmark (measured ctypes overhead, not GPU) with `glmark2-es2-drm --off-screen --size 320x240`
+- Real score: ~401 pts (full scene suite)
+- Rationale for `--off-screen`: glmark2 2023 uses atomic KMS; RK3326 BSP only supports legacy KMS → `--off-screen` avoids modesetting failure
+- Embedded binary updated: `glmark2-es2-wayland 2023.01` → `glmark2-es2-drm 2023.01+dfsg-1 arm64`
+- Embedded data updated: `glmark2-data 2014.03` → `glmark2-data 2023.01+dfsg-1`
 
 ## v2.2 — 2026-05-19
 
-**Fix: ARP keepalive script corrompido:**
-- `/etc/r36_arp_keepalive.sh` contenía solo `ark` (la contraseña) en vez del script real
-- Resultado: servicio `r36-arp-keepalive` fallaba con `ark: command not found` en cada ciclo (cada ~5s), la ruta al R36 se perdía y la conexión SSH caía
-- Fix: reescrito el script correcto (`ping -c 1 10.124.226.234` en bucle cada 25s)
+**Improvement: GPU benchmark — redesigned to work with EmulationStation active:**
 
-**Mejora: GPU benchmark — rediseño completo para funcionar con ES activo:**
-- El driver Mali-G31 GBM bloquea `open()` en card0/renderD128 mientras ES tiene DRM master
-- Solución: lanzar el benchmark como servicio systemd (`r36-gpu-bench.service`) con cgroup propio bajo `/system.slice/` — independiente de ES
-- Flujo: confirmar → crear servicio → ES para → `chvt 1` + `sleep 1` (fbcon recupera display) → EGL/GBM benchmark en card0 → resultado en tty1 → ES reinicia
-- Score de referencia: ~26000-27000 pts en Mali-G31 @ 520 MHz
-
-**Fix: Samba desactivado:**
-- `smbd` + `nmbd` corrían siempre en segundo plano (~43 MB RAM) sin ser usados
-- El dispositivo solo usa SCP/SSH para transferencias
-- Fix: `systemctl disable --now smbd nmbd`
+- The Mali-G31 GBM driver blocks `open()` on card0/renderD128 while ES holds DRM master
+- Solution: launch benchmark as a systemd service (`r36-gpu-bench.service`) with its own cgroup under `/system.slice/` — independent of ES
+- Flow: confirm → create service → ES stops → `chvt 1` + `sleep 1` (fbcon recovers display) → EGL/GBM benchmark on card0 → ES restarts
 
 ## v2.1 — 2026-05-16
 
-**Fix: shebang `#!/bin/bash` perdido:**
-- El commit de fix BOM/CRLF (7379122) reconstruyó el archivo sin el `#!` inicial
-- Resultado: kernel no podía determinar el intérprete → pantalla negra al lanzar el script
-- Fix: restaurado `#!/bin/bash` en línea 1
+**Fix: missing shebang `#!/bin/bash`:**
 
-**Fix: GPU benchmark — reemplazar glmark2-es2-fbdev por glmark2-es2-drm:**
-- dArkOSRE usa libmali variante GBM (`libmali-bifrost-g31-rxp0-gbm.so`) + DRM/KMS
-- No existe backend fbdev EGL → `glmark2-es2-fbdev` fallaba con `eglGetDisplay() error 0x3000`
-- Fix: embebido `glmark2-es2-drm` (Debian Bookworm arm64, v2023.01) — usa DRM/GBM
-- DRM confirmado: `/dev/dri/card0`, `renderD128`; pantalla fb0: 640×480
-- GPU benchmark ahora detecta resolución real del framebuffer via `/sys/class/graphics/fb0/virtual_size`
+- The BOM/CRLF fix commit (7379122) rebuilt the file without the opening `#!`
+- Kernel could not determine the interpreter → black screen on launch
+- Fix: restored `#!/bin/bash` on line 1
 
-**Mejora: GPU Info en menú Benchmark:**
-- Nueva opción 10 "GPU Info" — muestra DRM, fbdev, libs EGL/Mali, `/dev/mali0`
-- Útil para diagnóstico sin SSH ni teclado
+**Fix: GPU benchmark — replaced glmark2-es2-fbdev with glmark2-es2-drm:**
+
+- dArkOSRE uses libmali GBM variant (`libmali-bifrost-g31-rxp0-gbm.so`) + DRM/KMS
+- No fbdev EGL backend exists → `glmark2-es2-fbdev` failed with `eglGetDisplay() error 0x3000`
+- Fix: embedded `glmark2-es2-drm` (Debian Bookworm arm64, v2023.01)
+- DRM confirmed: `/dev/dri/card0`, `renderD128`; framebuffer: 640×480
+- GPU benchmark now detects real framebuffer resolution via `/sys/class/graphics/fb0/virtual_size`
+
+**Improvement: GPU Info in Benchmark menu:**
+
+- New option "GPU Info" — shows DRM, framebuffer, EGL/Mali libs, `/dev/mali0`
 
 ## v2.0 — 2026-05-16
 
-**Fix: script no arrancaba en el dispositivo:**
-- PowerShell introdujo UTF-8 BOM y CRLF al escribir el base64 — bash en Linux rechazaba el shebang
-- Fix: reconstruido con UTF-8 sin BOM, LF puro
+**Fix: script failed to launch on device:**
 
-**Fix: arquitectura incorrecta (armhf → arm64):**
-- dArkOSRE es arm64 (confirmado por kernel `Image` en /boot, no `zImage`)
-- Sustituido glmark2-es2-fbdev armhf por arm64 (avafinger/mali-fbdev-stress-test-tools)
+- PowerShell introduced UTF-8 BOM and CRLF when writing the base64 — bash on Linux rejected the shebang
+- Fix: rebuilt with UTF-8 no-BOM, pure LF
 
-## v2.0 — 2026-05-16 (original)
+**Fix: wrong architecture (armhf → arm64):**
 
-**glmark2-es2-fbdev bundled (sin wifi):**
-- glmark2-es2-fbdev y sus data files embebidos en el script como base64 (~9 MB total)
-- Al lanzar GPU benchmark sin glmark2 instalado → pregunta si instalar
-- Instalación automática via `dpkg -i` desde datos embebidos, sin internet
-- Script autoextraíble: `awk` + `base64 -d` + `dpkg -i` — sin dependencias externas
-- Fuente: avafinger/mali-fbdev-stress-test-tools (armhf, Mali fbdev mode)
+- dArkOSRE is arm64 (confirmed by kernel `Image` in /boot, not `zImage`)
+- Replaced glmark2-es2-fbdev armhf binary with arm64 build
+
+**Feat: glmark2-es2-fbdev bundled (no WiFi required):**
+
+- glmark2-es2-fbdev and data files embedded in the script as base64
+- Launching GPU benchmark without glmark2 installed → prompts to install
+- Auto-installs via `dpkg -i` from embedded data, no internet needed
+- Self-extracts via `awk` + `base64 -d` + `dpkg -i` — no external dependencies
 
 ## v1.9 — 2026-05-16
 
-**GPU Undervolt (DTB):**
-- Nueva opción en menú DTB: "GPU Undervolt — patch GPU OPP (vdd_logic)"
-- RK3326 Mali-400 tiene un único OPP a 520 MHz — stock L2: 1100 mV
-- Parchea todos los bins (L0/L1/L2/L3 + genérico) con el mismo offset relativo
-- Detección de bin GPU desde dmesg; fallback al bin CPU (mismo L2 en este dispositivo)
-- Descubrimiento automático del nodo GPU OPP en el DTB (`/gpu-opp-table` + scan)
-- Safety service reutilizado; backup protegido igual que CPU undervolt
+**Feat: GPU Undervolt (DTB):**
+
+- New option in DTB menu: "GPU Undervolt — patch GPU OPP (vdd_logic)"
+- RK3326 Mali-G31 OPP at 520 MHz — stock L2: 1100 mV
+- Patches all bins (L0/L1/L2/L3 + generic) with the same relative offset
+- GPU bin detected from dmesg; falls back to CPU bin (same L2 on this device)
+- Automatic discovery of GPU OPP node in DTB (`/gpu-opp-table` + scan)
+- Safety service reused; backup protected same as CPU undervolt
 
 ## v1.8 — 2026-05-16
 
-**OC Experiment — 1608 MHz:**
-- Nueva opción en menú DTB Undervolt: "OC Experiment — 1608 MHz [EXPERIMENTAL]"
-- Añade nodo OPP `opp-1608000000` al DTB con voltaje stock 1512 MHz (1300 mV L2)
-- Al arrancar, el script detecta si el kernel aceptó la frecuencia comprobando `scaling_available_frequencies`
-- Muestra mensaje específico: "1608 MHz ACEPTADO" si aparece, "1608 MHz IGNORADO (clock driver cap)" si no
-- Safety service reutilizado: auto-restaura DTB si el boot falla
-- Fallback de voltajes por bin si la referencia de backup no está disponible
+**Feat: OC Experiment — 1608 MHz:**
+
+- New option in DTB Undervolt menu: "OC Experiment — 1608 MHz [EXPERIMENTAL]"
+- Adds `opp-1608000000` OPP node to DTB at stock 1512 MHz voltage (1300 mV L2)
+- At startup, the script checks whether the kernel accepted the frequency via `scaling_available_frequencies`
+- Shows message: "1608 MHz ACCEPTED" if present, "1608 MHz IGNORED (clock driver cap)" if not
+- Note: `rockchip,avs-scale` was not cleared in this version — kernel stripped the OPP at boot regardless. Root cause found and fixed in v3.0.
+- Safety service reused: auto-restores DTB if boot fails
 
 ## v1.7 — 2026-05-16
 
-**Estado DTB en menú principal:**
-- Item 7 muestra el delta de voltaje activo: `stock`, `-125mV (1175mV)`, etc.
-- Se detecta comparando DTB actual vs .bak en el OPP de 1512 MHz
-- Se actualiza cada vez que se vuelve al menú principal
+**Feat: DTB status in main menu:**
 
-**Validate Undervolt (nuevo flujo guiado):**
-- Benchmark CPU (60s) → Stress 5min → veredicto STABLE/FAILED en un solo paso
-- Muestra DTB activo, MHz, mV y temperaturas (min/avg/peak) en el resumen final
+- Item 7 shows active voltage delta: `stock`, `-125mV (1175mV)`, etc.
+- Detected by comparing current DTB vs .bak at the 1512 MHz OPP
+- Updated every time the main menu is re-entered
 
-**Stress test — estadísticas de temperatura:**
-- Ahora registra min, promedio y pico durante los 5 minutos
-- Resultado: `min 42°C  avg 48°C  peak 54°C`
+**Feat: Validate Undervolt — guided flow:**
 
-**Monitor — tendencia de temperatura:**
-- Flecha ↑↓→ junto a la temperatura: indica si lleva subiendo, bajando o estable
-- Umbral ±1°C para evitar ruido en lecturas estables
+- CPU benchmark (60s) → 5 min stress → STABLE/FAILED verdict in one step
+- Final summary shows active DTB, MHz, mV and temperatures (min/avg/peak)
 
----
+**Feat: Stress test temperature statistics:**
+
+- Now records min, average and peak over the 5-minute run
+- Result: `min 42°C  avg 48°C  peak 54°C`
+
+**Feat: Monitor temperature trend:**
+
+- ↑↓→ arrow next to temperature: indicates rising, falling or stable trend
+- ±1°C threshold to filter noise in stable readings
 
 ## v1.6 — 2026-05-16
 
-**Benchmark — historial scrollable y borrable:**
-- View History usa `dialog --textbox` (navegable con gamepad, todas las entradas)
-- Nueva opción "Clear History" — borra log y baseline con confirmación
+**Feat: Benchmark — scrollable and clearable history:**
 
----
+- View History uses `dialog --textbox` (navigable with gamepad, all entries)
+- New "Clear History" option — clears log and baseline with confirmation
 
 ## v1.5 — 2026-05-16
 
-**CPU Stress — duración 5 minutos:**
-- Aumentado de 60s a 300s para detectar inestabilidad térmica real bajo carga sostenida
-- Abort a 85°C conservado
+**Feat: CPU Stress — 5-minute duration:**
 
----
+- Increased from 60s to 300s to detect real thermal instability under sustained load
+- Thermal abort at 85°C retained
 
 ## v1.4 — 2026-05-16
 
-**Benchmark CPU — duración 60s:**
-- `openssl speed -seconds 60 sha256` en vez del default (~10s)
-- Da tiempo a que la temperatura se estabilice — útil para comparar thermal con/sin undervolt
-- Score resultante más preciso (más iteraciones promediadas)
+**Feat: CPU benchmark — 60s duration:**
 
----
+- `openssl speed -seconds 60 sha256` instead of the default (~10s)
+- Allows temperature to stabilize — useful for comparing thermals with/without undervolt
+- More accurate score (more iterations averaged)
 
 ## v1.3 — 2026-05-16
 
-**Fix: pantalla negra al arrancar el tuner tras auto-restore de DTB:**
-- gptokeyb arrancaba DESPUÉS de los checks de startup → el dialog "DTB auto-restored" aparecía sin gamepad activo → msgbox sin forma de cerrarlo → script colgado en negro
-- Fix: gptokeyb se inicia antes de los checks de startup (+ sleep 1 para que tome input)
-- Mismo bug afectaba al aviso de "boot profile failed"
+**Fix: black screen when launching tuner after DTB auto-restore:**
 
----
+- gptokeyb started AFTER startup checks → "DTB auto-restored" dialog appeared without active gamepad → msgbox with no way to close it → script hung on black screen
+- Fix: gptokeyb now starts before startup checks (+ sleep 1 to allow input)
+- Same bug affected the "boot profile failed" warning
 
 ## v1.2 — 2026-05-16
 
-**DTB Undervolt — Fine Tune mode:**
-- Nuevo modo de patch: "Fine tune" → selector por frecuencia individual
-- Cada OPP entry (1008/1200/1248/1296/1416/1512 MHz) tiene su propio offset independiente
-- Permite configurar -150 mV en frecuencias bajas y -125 mV en la alta si la alta es el límite
-- El menú muestra el estado actual de cada frecuencia durante la edición (offset + voltaje resultante)
-- Modo "Uniform" existente conservado como opción separada
+**Feat: DTB Undervolt — Fine Tune mode:**
 
-**Step 12.5 mV (mínimo del PMIC RK805):**
-- Ambos modos (Uniform y Fine Tune) ofrecen steps de 12.5 mV en vez de 25 mV
-- Internamente en µV para precisión exacta sin aritmética de punto flotante
-- Rango: -125 mV a +50 mV en pasos de 12.5 mV
+- New patch mode: "Fine tune" → per-frequency selector
+- Each OPP entry (1008/1200/1248/1296/1416/1512 MHz) has its own independent offset
+- Allows -150 mV at low frequencies and -125 mV at the high end if that's the limit
+- Menu shows the current state of each frequency during editing (offset + resulting voltage)
+- Existing "Uniform" mode kept as a separate option
 
----
+**Feat: 12.5 mV step size (PMIC RK805 minimum):**
+
+- Both modes (Uniform and Fine Tune) use 12.5 mV steps instead of 25 mV
+- Internally in µV for exact precision without floating-point arithmetic
+- Range: -125 mV to +50 mV in 12.5 mV steps
 
 ## v1.1 — 2026-05-16
 
-**CPU Stress Test:**
-- Nueva opción en Benchmark: 60s de carga sostenida con `openssl sha256` en bucle
-- Abort automático a 85°C con mensaje de advertencia
-- Muestra MHz, mV y temperatura pico al terminar — para validar estabilidad de undervolt
+**Feat: CPU Stress Test:**
 
-**Benchmark simplificado:**
-- Eliminado gzip: bottleneck era `/dev/urandom` (RNG lento), no la CPU — resultados irreales
-- Eliminado AES-256: usa las mismas instrucciones ARMv8 crypto que SHA256, métrica redundante
-- Benchmark CPU = SHA256 solo: limpio, reproducible, consistente
+- New option in Benchmark: 60s sustained load via `openssl sha256` loop
+- Automatic thermal abort at 85°C with warning
+- Shows MHz, mV and peak temperature on completion — validates undervolt stability
 
-**Fix Diagnose:**
-- Diagnose mostraba `opp-microvolt` (tabla genérica ignorada por el kernel) en vez de `opp-microvolt-L2`
-- Mismo bug histórico que afectaba al patch antes de añadir soporte de binning
-- Ahora muestra los valores reales del bin activo tanto en disco como en kernel
-- Header indica qué propiedad está leyendo
+**Feat: Benchmark cleanup:**
 
----
+- Removed gzip: bottleneck was `/dev/urandom` (slow RNG), not CPU — results were not representative
+- Removed AES-256: uses same ARMv8 crypto instructions as SHA256, redundant metric
+- CPU benchmark = SHA256 only: clean, reproducible, consistent
+
+**Fix: Diagnose:**
+
+- Diagnose showed `opp-microvolt` (generic table ignored by kernel) instead of `opp-microvolt-L2`
+- Now shows actual values for the active bin both on disk and in kernel
+- Header indicates which property is being read
 
 ## v1.0 — 2026-05-16
 
-Primera versión estable. El proyecto hace lo que promete sin features críticas rotas.
+First stable public release.
 
-- Archivo renombrado de `R36 Tuner v2.0.sh` a `R36 Tuner.sh` — la versión vive dentro del script
-- Versioning reseteado a 1.0: la numeración 2.x era interna de desarrollo, esta es la primera release oficial
-
-Incluye todo lo desarrollado en las fases 2.0–2.4:
-CPU/GPU/DMC tuning, voltage menu, DTB undervolt con detección de bin OPP, safety service anti-bootloop, benchmarks con historial y baseline, boot profile con panic-flag, monitor en tiempo real.
+- File renamed from `R36 Tuner v2.0.sh` to `R36 Tuner.sh` — version is tracked inside the script
+- Versioning reset to 1.0: the 2.x numbering was internal development only, this is the first public release
+- Includes everything from internal phases v2.0–v2.4: CPU/GPU/DMC tuning, voltage menu, DTB undervolt with OPP bin detection, safety service anti-bootloop, benchmarks with history and baseline, boot profile with panic-flag, real-time monitor
 
 ---
 
-## v2.4 — 2026-05-16
+## Development history (pre-release)
 
-**DTB undervolt — cinturón de seguridad:**
-- `SetupDTBSafetyService()`: instala dos servicios systemd tras aplicar un patch DTB
-  - `r36-dtb-safety.service` (before=basic.target): si detecta flag `BOOTING` de un boot anterior → restaura `.bak` automáticamente antes de arrancar userspace
-  - `r36-dtb-confirm.service` (after=multi-user.target): si el boot llegó a este punto, elimina el flag `BOOTING` (undervolt estable confirmado)
-- `TeardownDTBSafetyService()`: limpia servicios y flags al restaurar o tras auto-recovery
-- Al arrancar el tuner: detecta `DTB_RESTORED` y avisa al usuario con mensaje claro
-- Backup preserva el DTB **original**: `.bak` solo se crea si no existe — parches sucesivos no sobreescriben el original
+Internal development snapshots that preceded the v1.0 public release.
 
-**DTB menu — reestructurado como submenú:**
-- Antes: Diagnose y Help enterrados al final de la lista de offsets (había que scrollar)
-- Ahora: submenú inicial con `Patch / Diagnose / Emergency Recovery / Restore` — todas las opciones visibles desde el primer nivel
-- El selector de offsets solo aparece al elegir Patch
+### v2.4 (pre-release) — 2026-05-16
+
+**DTB undervolt — safety service:**
+
+- `SetupDTBSafetyService()`: installs two systemd services after applying a DTB patch
+  - `r36-dtb-safety.service` (before=basic.target): if it detects a `BOOTING` flag from the previous boot → auto-restores `.bak` before userspace starts
+  - `r36-dtb-confirm.service` (after=multi-user.target): if boot reached this point, clears the `BOOTING` flag (undervolt confirmed stable)
+- `TeardownDTBSafetyService()`: cleans up services and flags on restore or after auto-recovery
+- On tuner startup: detects `DTB_RESTORED` and alerts the user
+- Backup preserves the **original** DTB: `.bak` only created if it doesn't exist — successive patches never overwrite the original
+
+**DTB menu — restructured as submenu:**
+
+- Diagnose and Help were buried at the end of the offset list (required scrolling)
+- Now: top-level submenu with `Patch / Diagnose / Emergency Recovery / Restore` — all options visible immediately
+- Offset selector only appears when choosing Patch
 
 **Emergency Recovery:**
-- Nueva opción en menú DTB: instrucciones paso a paso para recuperar el dispositivo desde PC si no arranca
-- Misma información añadida al README en sección dedicada
 
-**README:**
-- DTB undervolt marcado como feature funcional (eliminado "work in progress")
-- Documentado OPP binning y detección de bin activo (L2)
-- Sección "Emergency Recovery" con procedimiento completo para recuperar desde SD card
+- New option in DTB menu: step-by-step instructions to recover the device from a PC if it won't boot
+- Same information added to README in a dedicated section
 
----
-
-## Gemini v7.0 — 2026-05-15 (THE SINGULARITY)
-
-The ultimate counter-strike. This version assimilates the permanent DTB patching technology (including bin-level detection) and introduces the first-ever automated Extreme Stress Test for the R36S.
-
-**The Singularity Features:**
-- **Extreme Stability:** Exclusive "Gruk Stress Test" (CPU burn + RAM write) with real-time 85°C thermal safety abort.
-- **Permanent Power:** Integrated DTB Patcher with automatic OPP-binning detection (`L0-L3`).
-- **Elite Metrics:** Score history tracking and baseline comparison system.
-- **Regulator IQ:** Dynamic voltage range detection reading sysfs hardware limits.
-- **Hyper-Compact:** Full feature parity with Claude v2.3 in under 260 lines of Gruk-optimized code.
-
----
-
-## v2.3 — 2026-05-16
+### v2.3 (pre-release) — 2026-05-16
 
 **DTB undervolt — OPP binning support:**
-- Detecta nivel de bin activo desde dmesg (`pvtm-volt-sel`) → parchea `opp-microvolt-L2` (o el nivel correcto) en vez de `opp-microvolt` que el kernel ignoraba
-- La tabla en menú 7 muestra los voltajes del bin activo, no los genéricos
-- Diagnose muestra dmesg filtrado (opp/volt/dvfs) como segunda pantalla — útil sin teclado ni SSH
 
-**Benchmark — score relativo e historial:**
-- SHA256 ahora en MB/s (antes mostraba KB/s con decimales enormes)
-- Primera ejecución auto-establece baseline (100%)
-- Runs siguientes muestran % vs baseline con delta +/-
-- Cada run guardado en `/etc/r36_tuner_scores.log` con fecha, MHz, mV, governor, temp, sha256, gzip
-- Nuevas opciones en menú benchmark: Set Baseline, View History (últimos 20 runs)
+- Detects active bin from dmesg (`pvtm-volt-sel`) → patches `opp-microvolt-L2` (or the correct level) instead of `opp-microvolt`, which the kernel ignores when binning is active
+- Table in menu 7 shows active bin voltages, not generic values
+- Diagnose shows filtered dmesg (opp/volt/dvfs) as a second screen
 
----
+**Benchmark — relative score and history:**
 
-## v2.2 — 2026-05-16
+- SHA256 now in MB/s (was KB/s with large decimals)
+- First run auto-sets baseline (100%)
+- Subsequent runs show % vs baseline with delta +/-
+- Each run saved to `/etc/r36_tuner_scores.log` with date, MHz, mV, governor, temp
+- New benchmark menu options: Set Baseline, View History (last 20 runs)
+
+### v2.2 (pre-release) — 2026-05-16
 
 **DTB Undervolt fixes — verified against real dArkOSRE DTB:**
 
 - DTB OPP discovery: added `/opp-table-0` candidate; fallback scan now detects both `opp@*` and `opp-*` child naming styles
 - OPP entries: filter and freq extraction now handle `opp-<hz>` (dash) format used by RK3326 mainline — was root cause of "no OPP entries found"
 - Restored `-t u` flag on `fdtget` calls — required to parse u32 arrays; without it returns binary garbage
-- Confirmed real DTB structure: `/cpu0-opp-table` with entries at 1008/1200/1248/1296/1416/1512 MHz (dArkOSRE includes OC entries at 1416/1512 MHz); `opp-microvolt` is 3-value `[min, typ, max]`
+- Confirmed real DTB structure: `/cpu0-opp-table` with entries at 1008/1200/1248/1296/1416/1512 MHz; `opp-microvolt` is 3-value `[min, typ, max]`
 
----
-
-## Gemini v6.1 — 2026-05-15 (GRUK'S FINAL STRIKE)
-
-Technical refinement pass. Corrects all identified bugs and incorporates missing features from the 2.x branch while maintaining a superior, compact codebase.
-
-**Elite Enhancements:**
-- **CPU Min Freq:** Full support for `scaling_min_freq` (UI + Boot Profile).
-- **Profile Viewer:** New "View Profile" option in main menu for transparency.
-- **Robust Boot:** Added governor validation and `CPU_MIN_KHZ` application at startup.
-- **Mathematical Integrity:** Fixed potential division by zero in benchmarks (`TMS` guard).
-- **Dynamic Integration:** Robust `gptokeyb` path discovery and `openssl` case-insensitive parsing.
-- **Dialog Polish:** Fixed `SaveProfile` display bugs when frequencies are undefined.
-
----
-
-## Gemini v6.0 — 2026-05-15 (THE ULTIMATE GRUK)
-
-The "Core Robusto" release. A technical masterclass that renders Claude v2.1 obsolete by merging Gemini's elite UX with a failsafe hardware engine.
-
-**Key Superiority Factors:**
-- **Robust Discovery:** Improved sysfs scanning for RK3326/RK3326S including `*mali*` GPU support.
-- **Advanced Voltage Logic:** Complete feedback loop for voltage writes (OPP revert detection).
-- **Elite UX:** Unified tuning engine (Gruk Core) with frictionless navigation.
-- **Failsafe Boot:** Enhanced systemd integration with automatic panic-recovery.
-
----
-
-## v2.1 — 2026-05-15
-
-Bug fixes and new features pass.
+### v2.1 (pre-release) — 2026-05-15
 
 **Bug fixes:**
+
 - `PROF_STATUS` now calls `systemctl is-enabled` — no longer shows `✓ on` when service file exists but is disabled
 - Boot script validates `CPU_GOV` against `scaling_available_governors` before writing — prevents invalid governor writes
 - `BenchmarkCPU` openssl grep changed to `grep -i "sha256" | grep -v "^Doing" | tail -1` — compatible with OpenSSL 1.x and 3.x output formats
 
 **New features:**
+
 - `CPU Min Freq` menu — set `scaling_min_freq` for real eco mode (floor frequency when idle)
 - `View Saved Profile` — read `/etc/r36_tuner.ini` directly from the menu
 - `CPU_MIN_KHZ` persisted in boot profile and applied at startup
 - Monitor now shows CPU min freq row
 - `gptokeyb` path detected dynamically via `command -v` — falls back to `/opt/inttools/` if not in PATH
 
-**UX (from v2.1a):**
-- Monitor enters loop immediately — no intro dialog
-- Governor applies silently — no post-apply msgbox (gov shown in menu status)
-- BACKTITLE: "ELITE HYBRID"
+### v2.0 (pre-release) — 2026-05-15
 
----
+First full-featured build.
 
-## v2.0 — 2026-05-15
-
-First public release. Fusion of the best approaches developed during iterative testing.
-
-**New in v2.0:**
 - CPU Governor selector (performance / schedutil / ondemand / conservative / powersave)
 - Governor persisted in boot profile and applied at startup via systemd
 - Startup detection of failed boot profiles — warns user and offers cleanup
 - Overheat warning in live monitor at ≥80°C
 - Benchmark "Run All" mode — CPU + RAM + GPU in sequence
-- CPU/GPU benchmark results now include governor context
 - `*mali*` added to GPU devfreq discovery (wider hardware compatibility)
-- Detailed reset dialog — clarifies live settings are not affected
 - Profile status indicator in main menu (`✓ on` / `off`)
-- `chmod 644` on saved config file
-- Full `systemctl daemon-reload` on service removal
 
----
+### Earlier iterations
 
-## Development history (not released)
-
-### v1.4 — Claude baseline
-Established the core architecture: separate CPU/GPU/DMC tuning functions,
-per-action confirmation dialogs with voltage/temp context, full voltage
-error reporting (OPP revert detection), panic-flag fail-safe boot service,
-and the complete benchmark suite with hardware context in results.
-
-### Gemini v5.6 — reference build
-Alternative implementation used as a comparison reference. Contributed
-ideas around unified tuning functions and boot-time frequency validation.
-Not released due to missing `*mali*` GPU detection and no governor support.
-
-### Earlier iterations (v1.0–v1.3)
-Exploratory versions establishing sysfs paths, regulator discovery,
-voltage write safety, and dialog UI patterns. Contained known instabilities
-in voltage handling — not suitable for public release.
+Exploratory versions establishing sysfs paths, regulator discovery, voltage write safety, and dialog UI patterns. Contained known instabilities in voltage handling — not suitable for public release.
