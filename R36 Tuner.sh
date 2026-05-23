@@ -1630,6 +1630,10 @@ CSRC
     local GOV_PREV; GOV_PREV=$(GetGOV)
     echo performance > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
+    local TMPF=/tmp/r36_bench_temps_$$
+    ( while true; do GetTempC; sleep 2; done ) > "$TMPF" 2>/dev/null &
+    local SAMPLER_PID=$!
+
     local SCORE=0 SCORE_DISP="N/A"
     if [ -x "$CPU_BENCH" ]; then
         local raw; raw=$("$CPU_BENCH" 2>/dev/null)
@@ -1638,6 +1642,19 @@ CSRC
             SCORE_DISP="${SCORE} Mops/30s"
         fi
     fi
+
+    kill "$SAMPLER_PID" 2>/dev/null; wait "$SAMPLER_PID" 2>/dev/null
+    local T_INIT="?" T_MAX=0 T_SUM=0 T_CNT=0 T_FINAL="?"
+    while IFS= read -r t; do
+        [[ "$t" =~ ^[0-9]+$ ]] || continue
+        [ $T_CNT -eq 0 ] && T_INIT=$t
+        T_FINAL=$t
+        [ "$t" -gt "$T_MAX" ] && T_MAX=$t
+        T_SUM=$(( T_SUM + t )); T_CNT=$(( T_CNT + 1 ))
+    done < "$TMPF"
+    rm -f "$TMPF"
+    local T_AVG="?"; [ $T_CNT -gt 0 ] && T_AVG=$(( T_SUM / T_CNT ))
+    local TEMP_DISP="${T_INIT}°C → avg ${T_AVG}°C → peak ${T_MAX}°C"
 
     local REL_DISP=""
     if [ -f "$BASELINE_FILE" ]; then
@@ -1657,17 +1674,16 @@ CSRC
     local MHZ; MHZ=$(GetCPUMaxMHz)
     local MV; MV=$(GetRegVoltMV "$VDD_ARM")
     local GOV; GOV=$(GetGOV)
-    local TEMP; TEMP=$(GetTempC)
 
-    printf "%s | %s MHz | %s mV | %s | %s°C | alu: %s\n" \
-        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP" "$SCORE_DISP" \
+    printf "%s | %s MHz | %s mV | %s | %s | alu: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP_DISP" "$SCORE_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
     echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP}°C\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}" \
-        9 58 > "$CURR_TTY"
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP_DISP}\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}" \
+        10 58 > "$CURR_TTY"
 }
 
 BenchmarkRAM() {
@@ -1717,6 +1733,10 @@ CSRC
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — RAM ]" \
         --infobox "Memory bandwidth (write + copy)...\nPlease wait ~30s" 5 50 > "$CURR_TTY"
 
+    local TMPF=/tmp/r36_bench_temps_$$
+    ( while true; do GetTempC; sleep 2; done ) > "$TMPF" 2>/dev/null &
+    local SAMPLER_PID=$!
+
     local RW="N/A" RC="N/A"
     if [ -x "$RAM_BENCH" ]; then
         local out; out=$("$RAM_BENCH" 2>/dev/null)
@@ -1727,17 +1747,28 @@ CSRC
         [ -n "$c" ] && [ "$c" -gt 0 ] 2>/dev/null && RC="${c} MB/s"
     fi
 
+    kill "$SAMPLER_PID" 2>/dev/null; wait "$SAMPLER_PID" 2>/dev/null
+    local T_INIT="?" T_MAX=0 T_SUM=0 T_CNT=0
+    while IFS= read -r t; do
+        [[ "$t" =~ ^[0-9]+$ ]] || continue
+        [ $T_CNT -eq 0 ] && T_INIT=$t
+        [ "$t" -gt "$T_MAX" ] && T_MAX=$t
+        T_SUM=$(( T_SUM + t )); T_CNT=$(( T_CNT + 1 ))
+    done < "$TMPF"
+    rm -f "$TMPF"
+    local T_AVG="?"; [ $T_CNT -gt 0 ] && T_AVG=$(( T_SUM / T_CNT ))
+    local TEMP_DISP="${T_INIT}°C → avg ${T_AVG}°C → peak ${T_MAX}°C"
+
     local DMC_MHZ; DMC_MHZ=$(GetDMCMaxMHz)
     local DMC_MV; DMC_MV=$(GetRegVoltMV "$VCC_DDR")
-    local TEMP; TEMP=$(GetTempC)
 
-    printf "%s | RAM %s MHz | %s mV | %s°C | write: %s | copy: %s\n" \
-        "$(date '+%Y-%m-%d %H:%M')" "$DMC_MHZ" "$DMC_MV" "$TEMP" "$RW" "$RC" \
+    printf "%s | RAM %s MHz | %s mV | %s | write: %s | copy: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$DMC_MHZ" "$DMC_MV" "$TEMP_DISP" "$RW" "$RC" \
         >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ RAM RESULTS ]" \
-        --msgbox "Config: RAM ${DMC_MHZ} MHz  vcc_ddr: ${DMC_MV} mV\nTemp: ${TEMP}°C\n\nWrite (memset) : ${RW}\nCopy  (memcpy) : ${RC}" \
-        9 58 > "$CURR_TTY"
+        --msgbox "Config: RAM ${DMC_MHZ} MHz  vcc_ddr: ${DMC_MV} mV\nTemp: ${TEMP_DISP}\n\nWrite (memset) : ${RW}\nCopy  (memcpy) : ${RC}" \
+        10 58 > "$CURR_TTY"
 }
 
 InstallGlmark2Legacy() {
