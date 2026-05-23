@@ -2021,17 +2021,14 @@ ValidateGPUUndervolt() {
 
     dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
         --infobox "Stopping EmulationStation...\nGlmark2 terrain on-screen ~30s." 5 50 > "$CURR_TTY"
-    sleep 2
-    echo ark | sudo -S systemctl stop emulationstation 2>/dev/null
-    sleep 2
     pkill -9 -x emulationstation 2>/dev/null
-    sleep 1
+    sleep 2
 
     local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
-    echo ark | sudo -S "$LEGACY_BIN" --data-path /usr/local/share/glmark2data \
+    "$LEGACY_BIN" --data-path /usr/local/share/glmark2data \
         --size 320x240 -b terrain:duration=30 > "$GL_LOG" 2>&1
 
-    echo ark | sudo -S systemctl start emulationstation 2>/dev/null
+    systemctl start emulationstation 2>/dev/null
     sleep 1
 
     local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
