@@ -2113,7 +2113,7 @@ MainMenu() {
         local PROF_STATUS="✗ off"
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
         local CHOICE
-        CHOICE=$(dialog --no-shadow --title "[ R36 Tuner v${VERSION} ]" \
+        CHOICE=$(dialog --backtitle "$BACKTITLE" --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
                         --menu "" \
