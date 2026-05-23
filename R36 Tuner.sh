@@ -100,11 +100,12 @@ printf "\e[?25l" > "$CURR_TTY"
 dialog --clear
 
 if [[ ! -e "/dev/input/by-path/platform-odroidgo2-joypad-event-joystick" ]]; then
-    setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz
+    setfont /usr/share/consolefonts/Lat7-TerminusBold20x10.psf.gz
 else
     setfont /usr/share/consolefonts/Lat7-Terminus16.psf.gz
 fi
 
+stty -echo -F "$CURR_TTY" 2>/dev/null
 printf "\033[H\033[2J\n  R36 Tuner v${VERSION}\n  Loading...\n" > "$CURR_TTY"
 
 # ── Data Readers ──────────────────────────────────────────────────────────────
@@ -2097,11 +2098,12 @@ ViewProfileMenu() {
 # ── Exit ──────────────────────────────────────────────────────────────────────
 
 ExitMenu() {
+    stty echo -F "$CURR_TTY" 2>/dev/null
     printf "\033c" > "$CURR_TTY"
     printf "\e[?25h" > "$CURR_TTY"
     pkill -9 -f gptokeyb || true
     if [[ ! -e "/dev/input/by-path/platform-odroidgo2-joypad-event-joystick" ]]; then
-        sudo setfont /usr/share/consolefonts/Lat7-Terminus20x10.psf.gz
+        setfont /usr/share/consolefonts/Lat7-Terminus20x10.psf.gz
     fi
     exit 0
 }
