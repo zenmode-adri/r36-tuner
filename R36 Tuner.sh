@@ -105,6 +105,8 @@ else
     setfont /usr/share/consolefonts/Lat7-Terminus16.psf.gz
 fi
 
+printf "\033[H\033[2J\n  R36 Tuner v${VERSION}\n  Loading...\n" > "$CURR_TTY"
+
 # ── Data Readers ──────────────────────────────────────────────────────────────
 
 GetCPUCurMHz()  { local f; f=$(cat "$CPU_POLICY/scaling_cur_freq" 2>/dev/null); [ -n "$f" ] && echo $((f/1000)) || echo "N/A"; }

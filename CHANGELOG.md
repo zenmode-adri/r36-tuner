@@ -2,6 +2,12 @@
 
 ## v4.0 — 2026-05-23
 
+**Startup splash:**
+
+- Fix: show "R36 Tuner vX.X / Loading..." immediately after font loads, so the 2-second gamepad init wait has visible feedback instead of a blank screen.
+- Perf: `DetectOPPBinProp` now checks the bin cache file first before calling `dmesg` — bin is a silicon property and never changes, so cache is always valid. Skips dmesg on every run after first boot.
+- Perf: removed redundant `sudo` prefix from `chmod` and `setfont` in UI setup — script already runs as root via `exec sudo` at startup.
+
 **UI polish:**
 
 - Fix: Real-Time Monitor rewritten with pure ASCII box drawing (Unicode box characters rendered as double-width on tty1, causing line wrap and misalignment). Box is now centered based on actual terminal dimensions (`stty size`). Each line positioned with absolute ANSI cursor escape sequences. Trend indicators changed from Unicode arrows (↑↓→) to ASCII (`^` `v` `~`).
