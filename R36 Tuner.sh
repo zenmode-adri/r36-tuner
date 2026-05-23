@@ -2084,7 +2084,7 @@ BenchmarkMenu() {
                         --cancel-label "Back" \
                         --default-item "$LAST_CHOICE" \
                         --menu "Select test to run" \
-                        0 58 10 \
+                        17 58 10 \
                         1  "CPU           — int ALU               (~10s)" \
                         2  "RAM           — memset+memcpy         (~6s)" \
                         3  "GPU           — glmark2-es2-drm        (~1min)" \
