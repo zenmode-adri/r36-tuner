@@ -992,7 +992,7 @@ else: print('?')
         local DMESG; DMESG=$(dmesg 2>/dev/null | grep -iE "opp|dvfs|cpufreq|volt" | tail -30)
         [ -z "$DMESG" ] && DMESG="(no opp/dvfs entries in dmesg)"
         dialog --backtitle "$BACKTITLE" --title "[ DMESG — OPP/VOLT ]" \
-            --msgbox "$DMESG" 28 72 > "$CURR_TTY"
+            --msgbox "$DMESG" 28 62 > "$CURR_TTY"
         return
     fi
 
@@ -1842,7 +1842,7 @@ BenchmarkViewHistory() {
     local TMPFILE; TMPFILE=$(mktemp)
     cat "$SCORES_FILE" > "$TMPFILE"
     dialog --backtitle "$BACKTITLE" --title "[ $HEADER ]" \
-        --textbox "$TMPFILE" 24 78 > "$CURR_TTY"
+        --textbox "$TMPFILE" 24 62 > "$CURR_TTY"
     rm -f "$TMPFILE"
 }
 
