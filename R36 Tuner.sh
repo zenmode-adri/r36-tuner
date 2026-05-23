@@ -2117,9 +2117,9 @@ ValidateGPUUndervolt() {
         local VERDICT="STABLE"
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
         echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  GPU=${GPU_MHZ}MHz  CPU=${CPU_MV}mV  RAM=${RAM_MV}mV  ${TEMP_DISP}" >> "$SCORES_FILE"
-        dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULT ]" \
+        dialog --backtitle "$BACKTITLE" --title "[ GPU TEST — RESULT ]" \
             --msgbox "Terrain on-screen: ${FPS} fps\nGPU peak: ${GPU_MHZ} MHz  |  CPU: ${CPU_MV} mV  |  RAM: ${RAM_MV} mV\nTemp: ${TEMP_DISP}\nVerdict: ${VERDICT}\n\nArtifacts / freeze / crash = unstable.\nSaved to history." \
-            11 56 > "$CURR_TTY"
+            13 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — FAILED ]" \
