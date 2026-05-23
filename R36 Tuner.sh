@@ -817,12 +817,15 @@ DTBUndervoltMenu() {
         && DMC_OC_STATUS=" [ACTIVE]"
 
     local DTB_ITEMS=$(( 7 + ${#RESTORE_OPT[@]} / 2 ))
+    local PROMPT="OPP patch and freq unlock  |  reboot required"
+    local PROMPT_LINES=$(( $(printf '%s' "$PROMPT" | tr -cd '\n' | wc -c) + 1 ))
+    local H=$(( DTB_ITEMS + 6 + PROMPT_LINES )); [ $H -gt 20 ] && H=20
     local ACTION
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
         --ok-label "Select" --cancel-label "Back" \
         --default-item "$_DTB_MENU_LAST" \
-        --menu "OPP voltage patch and frequency unlock — reboot required" \
-        $(( DTB_ITEMS + 7 )) 60 $DTB_ITEMS \
+        --menu "$PROMPT" \
+        $H 58 $DTB_ITEMS \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
         "oc"      "CPU OC 1608 MHz — unlock via DTB${OC_STATUS}" \
