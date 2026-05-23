@@ -42,9 +42,11 @@ FindDMCDevfreq() {
     done
 }
 
-# Returns "opp-microvolt-LX" for the active bin, or "opp-microvolt" as fallback.
+BIN_CACHE_FILE="/etc/r36_tuner_bin"
+
+# Returns "opp-microvolt-LX" for the active bin, or "opp-microvolt" as safe fallback.
+# Priority: dmesg (saves to cache) → cache file → generic (no guessing).
 # Arg 1 (optional): extra dmesg pattern to try first (e.g. "gpu|ff400000|mali", "dmc").
-# Fallback reads /proc/device-tree when dmesg ring buffer has rotated.
 DetectOPPBinProp() {
     local extra_pat="$1" bin=""
     [ -n "$extra_pat" ] && \
@@ -53,24 +55,24 @@ DetectOPPBinProp() {
     [ -z "$bin" ] && \
         bin=$(dmesg 2>/dev/null \
             | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-    if [ -z "$bin" ]; then
-        local opp_dir=""
-        for p in /proc/device-tree/cpu0-opp-table /proc/device-tree/opp-table-0 \
-                 /proc/device-tree/opp-table; do
-            [ -d "$p" ] && opp_dir="$p" && break
-        done
-        if [ -n "$opp_dir" ]; then
-            for lvl in 0 1 2 3; do
-                local found=0
-                for f in "$opp_dir"/opp-*/opp-microvolt-L${lvl} \
-                         "$opp_dir"/opp@*/opp-microvolt-L${lvl}; do
-                    [ -f "$f" ] && found=1 && break
-                done
-                [ $found -eq 1 ] && bin="L${lvl}" && break
-            done
-        fi
+    if [ -n "$bin" ]; then
+        echo "$bin" > "$BIN_CACHE_FILE" 2>/dev/null
+        echo "opp-microvolt-${bin}"; return
     fi
-    [ -n "$bin" ] && echo "opp-microvolt-${bin}" || echo "opp-microvolt"
+    if [ -f "$BIN_CACHE_FILE" ]; then
+        bin=$(grep -o 'L[0-9]' "$BIN_CACHE_FILE" 2>/dev/null | head -1)
+        [ -n "$bin" ] && echo "opp-microvolt-${bin}" && return
+    fi
+    echo "opp-microvolt"
+}
+
+# Call before any DTB patch — blocks if bin was not detected reliably.
+AssertBinDetected() {
+    [ "$1" != "opp-microvolt" ] && return 0
+    dialog --backtitle "$BACKTITLE" --title "[ BIN NOT DETECTED ]" \
+        --msgbox "Could not detect chip bin level (L0/L1/L2/L3).\n\nThe dmesg buffer may have rotated and no\ncached bin was found.\n\nReboot the device — bin will be detected\nand cached automatically on next boot.\n\nNo changes made." \
+        11 52 > "$CURR_TTY"
+    return 1
 }
 
 CPU_POLICY="/sys/devices/system/cpu/cpufreq/policy0"
@@ -556,6 +558,8 @@ DTBGPUUndervoltMenu() {
     dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — CONFIRM ]" \
         --yesno "$PREVIEW" $CONFIRM_H 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
+
+    AssertBinDetected "$GPU_BIN_PROP" || return
 
     if [ ! -f "${DTB}.bak" ]; then
         cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
@@ -1136,6 +1140,8 @@ else: print('?')
     [ $? -ne 0 ] && return
 
     # Backup + apply — only create backup if none exists yet (preserve true original)
+    AssertBinDetected "$OPP_BIN_PROP" || return
+
     if [ ! -f "${DTB}.bak" ]; then
         cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
     fi
@@ -1176,6 +1182,7 @@ else: print('?')
 
 DTBCPUOC() {
     local DTB="$1" OPP_BASE="$2" OPP_BIN_PROP="$3"
+    AssertBinDetected "$OPP_BIN_PROP" || return
 
     # Current state
     local IS_ACTIVE=0
@@ -1281,9 +1288,10 @@ DTBGPUOC() {
         return
     fi
 
-    # Detect GPU bin level — dmesg (GPU-specific → CPU fallback) → /proc/device-tree
+    # Detect GPU bin level — dmesg → cache → generic
     local GPU_BIN_PROP; GPU_BIN_PROP=$(DetectOPPBinProp "gpu|ff400000|mali")
     local GPU_BIN=""; [[ "$GPU_BIN_PROP" == *-L* ]] && GPU_BIN="${GPU_BIN_PROP##*-}"
+    AssertBinDetected "$GPU_BIN_PROP" || return
 
     # Current state
     local IS_ACTIVE=0
@@ -1380,9 +1388,10 @@ DTBRAMOC() {
         return
     fi
 
-    # Detect bin level — dmesg (DMC-specific → CPU fallback) → /proc/device-tree
+    # Detect bin level — dmesg → cache → generic
     local DMC_BIN_PROP; DMC_BIN_PROP=$(DetectOPPBinProp "dmc")
     local DMC_BIN=""; [[ "$DMC_BIN_PROP" == *-L* ]] && DMC_BIN="${DMC_BIN_PROP##*-}"
+    AssertBinDetected "$DMC_BIN_PROP" || return
 
     # Current state — available_frequencies contains 928000000 if OPP active
     local IS_ACTIVE=0
