@@ -1,5 +1,24 @@
 # Changelog
 
+## v3.7 — 2026-05-23
+
+**Reliability fixes from full code audit — all users should update:**
+
+- Fix: OPP bin detection now has `/proc/device-tree` fallback when dmesg ring buffer has rotated (long uptime). Previously, if the `pvtm-volt-sel` message was no longer in dmesg, all DTB patches silently wrote `opp-microvolt` instead of the bin-specific `opp-microvolt-LX` — kernel ignores `opp-microvolt` when binning is active, so patches had no effect. New `DetectOPPBinProp()` function used in all 5 patching paths (CPU UV, GPU UV, CPU OC, GPU OC, RAM OC).
+- Fix: CPU OC 1608 MHz now writes both bin-specific (`opp-microvolt-LX`) and generic (`opp-microvolt`) voltage properties on the new OPP node, consistent with GPU OC and RAM OC. Prevents silent OPP failure on kernels that fall back to the generic property.
+- Fix: CPU Stress Test now uses the C ALU benchmark (same LCG code as CPU benchmark) instead of `openssl speed sha256`. OpenSSL SHA256 uses ARMv8 hardware crypto — it bypasses the ALU pipeline and does not trigger voltage-related instability. Real-world effect: a 1175 mV / 1608 MHz configuration that fails the C stress in 15s was passing the SHA256 stress for the full 5 minutes. Stress test now catches marginal voltages correctly.
+- Fix: CPU Stress Test now fails with a clear error message if neither gcc (for C benchmark) nor openssl is available, instead of running an empty loop and reporting STABLE.
+- Fix: DMC OC status detection and active-frequency check now use the dynamic `$DMC_DEVFREQ` path instead of the hardcoded `/sys/class/devfreq/dmc/` string. Prevents `[ACTIVE]` display from breaking if the devfreq node name differs.
+- Fix: glmark2 legacy binary extraction now includes SHA256 integrity check after base64 decode. A corrupt extraction (truncated binary) no longer silently executes as root.
+- Fix: CPU benchmark now shows a clear error message when gcc is not installed, instead of silently returning N/A.
+- New: hardware pre-flight warning at startup if `/proc/device-tree/compatible` does not contain `rockchip,rk3326` or `rockchip,px30` — alerts users who might run the script on an unsupported device.
+
+**UI fixes:**
+- Fix: GPU UV menu title showed "Stock 520 MHz = ? mV" — variable scope error (`$OPP_BIN_PROP` used where `$GPU_BIN_PROP` was needed)
+- Fix: ViewProfile dialog height corrected (content was clipped on some configurations)
+- Fix: main menu height corrected after removing unused header row and Voltage Info entry
+- Fix: all dialog box heights audited and corrected across the script
+
 ## v3.6 — 2026-05-22
 
 **Bug fixes and UI polish for final release:**
