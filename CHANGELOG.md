@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.8 — 2026-05-23
+
+**OPP bin detection rewritten — important reliability fix:**
+
+- Fix: `DetectOPPBinProp()` now uses a three-tier fallback instead of guessing from `/proc/device-tree`. Previous fallback iterated L0→L3 and took the first bin that existed in the DTB — since all bins are present in the DTB, this always returned L0 regardless of the active bin. On a chip with bin L2 (like the R36S L2/leakage=13), patching with L0 voltage tables is incorrect. New priority order: **(1)** dmesg (authoritative — kernel logs actual bin at boot) → **(2)** cache file `/etc/r36_tuner_bin` (persists across dmesg rotation) → **(3)** generic `opp-microvolt` with abort (safe, no wrong-bin patch).
+- Fix: When bin is detected from dmesg, it is now saved to `/etc/r36_tuner_bin`. On future script runs where the dmesg ring buffer has rotated, the cached value is used. A single clean boot is enough to populate the cache permanently.
+- Fix: If neither dmesg nor the cache file can provide the bin (e.g. first run on a device with a rotated dmesg), all five patching paths (CPU UV, GPU UV, CPU OC, GPU OC, RAM OC) now abort with a clear message: *"Reboot the device — bin will be detected and cached automatically."* No changes are made. Previously, the wrong bin (L0) would be silently patched.
+- Fix: CPU OC, GPU OC and RAM OC info screens now show the bin-not-detected warning inline with the status (instead of blocking before the screen). If the OC is not yet active and the bin is unknown, the dialog shows `[OK]` instead of `[Yes]/[No]` — the user sees the current OC state but cannot apply a patch until they reboot. If the OC is already active, no warning is shown.
+- Fix: glmark2 legacy binary now installed to `/usr/local/bin/glmark2-es2-drm-legacy` and shader data to `/usr/local/share/glmark2data/` (persistent). Previously extracted to `/tmp/` on every session — cleared on each reboot, causing a re-extraction delay on first GPU benchmark use after every boot.
+
 ## v3.7 — 2026-05-23
 
 **Reliability fixes from full code audit — all users should update:**
