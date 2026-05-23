@@ -1808,10 +1808,9 @@ SCORE=$(grep "glmark2 Score:" "$GL_LOG" | awk '{print $NF}')
 if [ -n "$SCORE" ]; then
     GPU_MHZ=$(for d in /sys/class/devfreq/*; do case "$(basename "$d")" in *gpu*|*mali*|*ff400000*) cat "$d/max_freq" 2>/dev/null && break ;; esac; done | awk '{printf "%d",$1/1000000}')
     TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
-    SCENES=$(grep "^\[" "$GL_LOG" | awk '{print $1, $NF}' | tr '\n' '\n')
     echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
-    printf "GPU Score: %s pts\nGPU: %sMHz  Temp: %sC\n\n%s\nSaved to history." \
-        "$SCORE" "$GPU_MHZ" "$TEMP" "$SCENES" > "$PENDING"
+    printf "GPU Score: %s pts\nGPU: %sMHz  Temp: %sC\n\nSaved to history." \
+        "$SCORE" "$GPU_MHZ" "$TEMP" > "$PENDING"
 else
     ERR=$(grep -i "error\|failed\|warning" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
     printf "GPU bench failed.\n\n%s" "$ERR" > "$PENDING"
@@ -2220,7 +2219,7 @@ if [ -f /tmp/gpu_bench_pending ]; then
     PENDING_MSG=$(cat /tmp/gpu_bench_pending)
     rm -f /tmp/gpu_bench_pending
     dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULTADO ]" \
-        --msgbox "${PENDING_MSG}" 8 52 > "$CURR_TTY"
+        --msgbox "${PENDING_MSG}" 10 52 > "$CURR_TTY"
 fi
 
 trap ExitMenu EXIT
