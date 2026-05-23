@@ -2112,11 +2112,13 @@ ValidateGPUUndervolt() {
     local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
 
     if [ -n "$FPS" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  DTB=${DTB_ST}  GPU=${GPU_MHZ}MHz  ${TEMP_DISP}" >> "$SCORES_FILE"
+        local CPU_MV; CPU_MV=$(GetRegVoltMV "$VDD_ARM")
+        local RAM_MV; RAM_MV=$(GetRegVoltMV "$VCC_DDR")
         local VERDICT="STABLE"
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
+        echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  GPU=${GPU_MHZ}MHz  CPU=${CPU_MV}mV  RAM=${RAM_MV}mV  ${TEMP_DISP}" >> "$SCORES_FILE"
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULT ]" \
-            --msgbox "Terrain on-screen: ${FPS} fps\nGPU peak: ${GPU_MHZ} MHz  |  DTB: ${DTB_ST}\nTemp: ${TEMP_DISP}\nVerdict: ${VERDICT}\n\nArtifacts / freeze / crash = unstable.\nSaved to history." \
+            --msgbox "Terrain on-screen: ${FPS} fps\nGPU peak: ${GPU_MHZ} MHz  |  CPU: ${CPU_MV} mV  |  RAM: ${RAM_MV} mV\nTemp: ${TEMP_DISP}\nVerdict: ${VERDICT}\n\nArtifacts / freeze / crash = unstable.\nSaved to history." \
             11 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
