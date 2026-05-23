@@ -23,6 +23,30 @@ export TERM=linux
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 _DTB_MENU_LAST=""
 
+# ── Dialog centering wrapper ──────────────────────────────────────────────────
+# dialog centers in ROWS=24 full screen, but backtitle uses rows 1-2.
+# Usable area: rows 3-24 (22 rows). Offset is always +1 row vs dialog default.
+# This wrapper parses H and W from args and injects --begin row col.
+# Falls back to plain dialog when H=0 (auto-height).
+dialog() {
+    local args=("$@") h=0 w=0 i
+    for (( i=0; i<${#args[@]}; i++ )); do
+        case "${args[$i]}" in
+            --menu|--msgbox|--yesno|--inputbox|--textbox|--checklist|--radiolist|--infobox|--gauge)
+                h="${args[$((i+2))]}"; w="${args[$((i+3))]}"; break ;;
+        esac
+    done
+    if [[ "$h" =~ ^[1-9][0-9]*$ ]]; then
+        local row=$(( (22 - h) / 2 + 3 ))
+        local col=0
+        [[ $row -lt 3 ]] && row=3
+        [[ "$w" =~ ^[1-9][0-9]*$ ]] && col=$(( (64 - w) / 2 )) && [[ $col -lt 0 ]] && col=0
+        command dialog --begin "$row" "$col" "${args[@]}"
+    else
+        command dialog "${args[@]}"
+    fi
+}
+
 # ── Hardware Discovery ────────────────────────────────────────────────────────
 
 FindRegulatorDir() {
