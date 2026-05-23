@@ -2120,6 +2120,7 @@ ExitMenu() {
 # ── Main Menu ─────────────────────────────────────────────────────────────────
 
 MainMenu() {
+    local LAST_CHOICE=""
     while true; do
         local PROF_STATUS="✗ off"
         [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && PROF_STATUS="✓ on"
@@ -2127,6 +2128,7 @@ MainMenu() {
         CHOICE=$(dialog --backtitle "$BACKTITLE" --title "[ R36 Tuner v${VERSION} ]" \
                         --ok-label "Select" \
                         --cancel-label "Exit" \
+                        --default-item "$LAST_CHOICE" \
                         --menu "" \
                         17 58 11 \
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
@@ -2145,6 +2147,7 @@ MainMenu() {
         local RET=$?
         [ $RET -ne 0 ] && ExitMenu
 
+        LAST_CHOICE="$CHOICE"
         case $CHOICE in
             1)  CPUTuningMenu ;;
             2)  CPUMinFreqMenu ;;
