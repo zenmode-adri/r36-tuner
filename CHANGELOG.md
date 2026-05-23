@@ -1,5 +1,12 @@
 # Changelog
 
+## v3.9 — 2026-05-23
+
+**Bug fixes found during release audit:**
+
+- Fix: GPU benchmark score log showed wrong MHz value. The runner script used `cat /sys/class/devfreq/*/max_freq | head -1` — the glob expands alphabetically, returning `dmc` (924 MHz) before `ff400000.gpu` (600 MHz). Score logs now correctly show `GPU=600MHz` instead of `GPU=924MHz`. Changed to a name-pattern loop matching `*gpu*|*mali*|*ff400000*`.
+- Fix: `ValidateUndervolt()` showed empty temperature fields (`Temp: min °C  avg °C  peak °C`) when CPU stress test aborted due to thermal throttle. `StressTestCPU` now exports the partial temperature stats (min/avg/peak collected up to the abort point) before returning with exit code 1.
+
 ## v3.8 — 2026-05-23
 
 **OPP bin detection rewritten — important reliability fix:**

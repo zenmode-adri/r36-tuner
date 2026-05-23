@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v3.8 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v3.9 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.8"
+VERSION="3.9"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -1731,7 +1731,7 @@ glmark2-es2-drm --off-screen --size 320x240 \
 
 SCORE=$(grep "glmark2 Score:" "$GL_LOG" | awk '{print $NF}')
 if [ -n "$SCORE" ]; then
-    GPU_MHZ=$(cat /sys/class/devfreq/*/max_freq 2>/dev/null | head -1 | awk '{printf "%d",$1/1000000}')
+    GPU_MHZ=$(for d in /sys/class/devfreq/*; do case "$(basename "$d")" in *gpu*|*mali*|*ff400000*) cat "$d/max_freq" 2>/dev/null && break ;; esac; done | awk '{printf "%d",$1/1000000}')
     TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
     SCENES=$(grep "^\[" "$GL_LOG" | awk '{print $1, $NF}' | tr '\n' '\n')
     echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
@@ -1856,6 +1856,12 @@ CSRC
         local T; T=$(GetTempC)
         if [[ "$T" =~ ^[0-9]+$ ]]; then
             if [ "$T" -ge 85 ]; then
+                local AVG_T=0
+                [ $TEMP_COUNT -gt 0 ] && AVG_T=$(( TEMP_SUM / TEMP_COUNT ))
+                [ "$MIN_TEMP" -eq 999 ] && MIN_TEMP="N/A"
+                STRESS_MIN_TEMP="$MIN_TEMP"
+                STRESS_AVG_TEMP="$AVG_T"
+                STRESS_MAX_TEMP="$T"
                 dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS — ABORTED ]" \
                     --msgbox "THERMAL ABORT at ${T}°C\n\nUndervolt may be unstable at this load.\nTry a smaller offset." 8 50 > "$CURR_TTY"
                 return 1
