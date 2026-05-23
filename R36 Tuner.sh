@@ -627,7 +627,7 @@ CPUTuningMenu() {
                  --title "[ CPU MAX FREQUENCY ]" \
                  --default-item "$CUR_MAX" \
                  --menu "★ = current" \
-                 $H 40 $COUNT \
+                 $H 46 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -715,7 +715,7 @@ GovernorMenu() {
                  --title "[ CPU GOVERNOR ]" \
                  --default-item "$CUR_GOV" \
                  --menu "★ = active  |  Save Profile to persist at boot" \
-                 $(( GOV_COUNT + 6 )) 54 $GOV_COUNT \
+                 $(( GOV_COUNT + 6 )) 58 $GOV_COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -2024,7 +2024,7 @@ BenchmarkMenu() {
                         --ok-label "Run" \
                         --cancel-label "Back" \
                         --menu "Select test to run" \
-                        16 56 10 \
+                        20 56 10 \
                         1  "CPU           — int ALU               (~10s)" \
                         2  "RAM           — memset+memcpy         (~6s)" \
                         3  "GPU           — glmark2-es2-drm        (~1min)" \
