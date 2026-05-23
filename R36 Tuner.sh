@@ -404,7 +404,7 @@ DTBGPUUndervoltMenu() {
 
     local MODE_H=$(( N + 13 )); [ -f "${DTB}.bak" ] && MODE_H=$(( MODE_H + 1 ))
     local PATCH_MODE
-    PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — MODO ]" \
+    PATCH_MODE=$(dialog --backtitle "$BACKTITLE" --title "[ GPU UNDERVOLT — MODE ]" \
         --ok-label "Select" --cancel-label "Back" \
         --menu "${TABLE}\nSelect mode:" \
         $MODE_H 60 2 \
@@ -1936,7 +1936,7 @@ ViewProfileMenu() {
     fi
     local CONTENT; CONTENT=$(cat "$CONFIG_FILE" 2>/dev/null)
     dialog --backtitle "$BACKTITLE" --title "[ SAVED PROFILE — $CONFIG_FILE ]" \
-        --msgbox "$CONTENT" 16 52 > "$CURR_TTY"
+        --msgbox "$CONTENT" 13 52 > "$CURR_TTY"
 }
 
 # ── Exit ──────────────────────────────────────────────────────────────────────
