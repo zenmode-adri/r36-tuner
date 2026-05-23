@@ -1625,25 +1625,72 @@ CSRC
 }
 
 BenchmarkRAM() {
-    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — RAM ]" \
-        --infobox "128 MB write + read via /dev/shm...\nPlease wait ~8s" 5 50 > "$CURR_TTY"
-    local RW="N/A" RR="N/A"
-    local T1 T2 TMS
-    T1=$(date +%s%N)
-    dd if=/dev/zero of=/dev/shm/.r36bench bs=1M count=128 conv=fdatasync 2>/dev/null
-    T2=$(date +%s%N)
-    TMS=$(( (T2 - T1) / 1000000 ))
-    [ $TMS -gt 0 ] && RW="$(( 128 * 1000 / TMS )) MB/s"
+    local RAM_BENCH=/tmp/r36_rambench
 
-    T1=$(date +%s%N)
-    dd if=/dev/shm/.r36bench of=/dev/null bs=1M 2>/dev/null
-    T2=$(date +%s%N)
-    TMS=$(( (T2 - T1) / 1000000 ))
-    [ $TMS -gt 0 ] && RR="$(( 128 * 1000 / TMS )) MB/s"
-    rm -f /dev/shm/.r36bench
+    if [ ! -x "$RAM_BENCH" ] && ! command -v gcc >/dev/null 2>&1; then
+        dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — RAM ]" \
+            --msgbox "gcc not found — cannot compile RAM benchmark.\nInstall: apt install gcc" \
+            6 55 > "$CURR_TTY"
+        return
+    fi
+    if [ ! -x "$RAM_BENCH" ]; then
+        cat > /tmp/r36_rambench.c << 'CSRC'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#define BUF (128*1024*1024)
+#define DUR 3
+int main() {
+    char *a = malloc(BUF), *b = malloc(BUF);
+    if (!a || !b) { puts("0\n0"); return 1; }
+    memset(a, 0xAB, BUF);
+    memset(b, 0x00, BUF);
+    struct timespec t0, t1;
+    long long n, ms;
+    n = 0;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    do { memset(b, 0xCD, BUF); n += BUF;
+         clock_gettime(CLOCK_MONOTONIC, &t1);
+    } while (t1.tv_sec - t0.tv_sec < DUR);
+    ms = (t1.tv_sec-t0.tv_sec)*1000+(t1.tv_nsec-t0.tv_nsec)/1000000;
+    printf("%lld\n", n/1024/1024*1000/ms);
+    n = 0;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    do { memcpy(b, a, BUF); n += BUF;
+         clock_gettime(CLOCK_MONOTONIC, &t1);
+    } while (t1.tv_sec - t0.tv_sec < DUR);
+    ms = (t1.tv_sec-t0.tv_sec)*1000+(t1.tv_nsec-t0.tv_nsec)/1000000;
+    printf("%lld\n", n/1024/1024*1000/ms);
+    return 0;
+}
+CSRC
+        gcc -O2 -o "$RAM_BENCH" /tmp/r36_rambench.c 2>/dev/null
+    fi
+
+    dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — RAM ]" \
+        --infobox "Memory bandwidth (write + copy)...\nPlease wait ~6s" 5 50 > "$CURR_TTY"
+
+    local RW="N/A" RC="N/A"
+    if [ -x "$RAM_BENCH" ]; then
+        local out; out=$("$RAM_BENCH" 2>/dev/null)
+        local w c
+        w=$(echo "$out" | sed -n '1p')
+        c=$(echo "$out" | sed -n '2p')
+        [ -n "$w" ] && [ "$w" -gt 0 ] 2>/dev/null && RW="${w} MB/s"
+        [ -n "$c" ] && [ "$c" -gt 0 ] 2>/dev/null && RC="${c} MB/s"
+    fi
+
+    local DMC_MHZ; DMC_MHZ=$(GetDMCMaxMHz)
+    local DMC_MV; DMC_MV=$(GetRegVoltMV "$VCC_DDR")
+    local TEMP; TEMP=$(GetTempC)
+
+    printf "%s | DMC %s MHz | %s mV | %s°C | write: %s | copy: %s\n" \
+        "$(date '+%Y-%m-%d %H:%M')" "$DMC_MHZ" "$DMC_MV" "$TEMP" "$RW" "$RC" \
+        >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ RAM RESULTS ]" \
-        --msgbox "Config: DMC $(GetDMCMaxMHz) MHz  vcc_ddr: $(GetRegVoltMV "$VCC_DDR") mV\nTemp: $(GetTempC)°C\n\nWrite : $RW\nRead  : $RR" \
+        --msgbox "Config: DMC ${DMC_MHZ} MHz  vcc_ddr: ${DMC_MV} mV\nTemp: ${TEMP}°C\n\nWrite (memset) : ${RW}\nCopy  (memcpy) : ${RC}" \
         9 58 > "$CURR_TTY"
 }
 
@@ -1978,7 +2025,7 @@ BenchmarkMenu() {
                         --menu "Select test to run" \
                         16 62 10 \
                         1  "CPU           — int ALU               (~10s)" \
-                        2  "RAM           — 128MB r/w             (~8s)" \
+                        2  "RAM           — memset+memcpy         (~6s)" \
                         3  "GPU           — glmark2-es2-drm        (~1min)" \
                         4  "All           — CPU + RAM + GPU" \
                         5  "CPU Stress    — 5min full load, abort 85°C" \
