@@ -21,6 +21,7 @@ DTB_SAFETY_SVC="/etc/systemd/system/r36-dtb-safety.service"
 
 export TERM=linux
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+_DTB_MENU_LAST=""
 
 # ── Hardware Discovery ────────────────────────────────────────────────────────
 
@@ -470,6 +471,7 @@ DTBGPUUndervoltMenu() {
 
     else
         # Fine tune — per OPP
+        local FT_LAST_SEL=""
         while true; do
             local FTCHOICES=()
             for (( i=0; i<N; i++ )); do
@@ -498,12 +500,14 @@ DTBGPUUndervoltMenu() {
             local FT_SEL
             FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ GPU FINE TUNE — SELECT OPP ]" \
                 --ok-label "Tune" --cancel-label "Cancel" \
+                --default-item "$FT_LAST_SEL" \
                 --menu "Select frequency to tune:" \
                 $(( N + 8 )) 52 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && return
             [ "$FT_SEL" = "done" ] && break
+            FT_LAST_SEL="$FT_SEL"
 
             local IDX="$FT_SEL"
             local stock_mv=$(( GPU_VOLTS_UV[IDX] / 1000 ))
@@ -816,6 +820,7 @@ DTBUndervoltMenu() {
     local ACTION
     ACTION=$(dialog --backtitle "$BACKTITLE" --title "[ DTB TUNING ]" \
         --ok-label "Select" --cancel-label "Back" \
+        --default-item "$_DTB_MENU_LAST" \
         --menu "OPP voltage patch and frequency unlock — reboot required" \
         $(( DTB_ITEMS + 7 )) 60 $DTB_ITEMS \
         "patch"   "CPU Undervolt — patch OPP voltages" \
@@ -828,6 +833,7 @@ DTBUndervoltMenu() {
         "${RESTORE_OPT[@]}" \
         2>&1 > "$CURR_TTY")
     [ -z "$ACTION" ] && return 1
+    _DTB_MENU_LAST="$ACTION"
 
     # Emergency recovery — no setup needed
     if [ "$ACTION" = "help" ]; then
@@ -1056,6 +1062,7 @@ else: print('?')
 
     else
         # Fine tune — interactive per-freq loop
+        local FT_LAST_SEL=""
         while true; do
             local FTCHOICES=()
             for (( i=0; i<N; i++ )); do
@@ -1086,12 +1093,14 @@ else: print('?')
             local FT_SEL
             FT_SEL=$(dialog --backtitle "$BACKTITLE" --title "[ FINE TUNE — SELECT FREQUENCY ]" \
                 --ok-label "Tune" --cancel-label "Cancel" \
+                --default-item "$FT_LAST_SEL" \
                 --menu "Select frequency to adjust:" \
                 $(( N + 8 )) 52 $(( N + 1 )) \
                 "${FTCHOICES[@]}" \
                 2>&1 > "$CURR_TTY")
             [ $? -ne 0 ] && return
             [ "$FT_SEL" = "done" ] && break
+            FT_LAST_SEL="$FT_SEL"
 
             local IDX="$FT_SEL"
             local freq_mhz=$(( ${FREQS[$IDX]} / 1000000 ))
@@ -2026,12 +2035,14 @@ ValidateGPUUndervolt() {
 }
 
 BenchmarkMenu() {
+    local LAST_CHOICE=""
     while true; do
         local CHOICE
         CHOICE=$(dialog --backtitle "$BACKTITLE" \
                         --title "[ BENCHMARK ]" \
                         --ok-label "Run" \
                         --cancel-label "Back" \
+                        --default-item "$LAST_CHOICE" \
                         --menu "Select test to run" \
                         20 56 10 \
                         1  "CPU           — int ALU               (~10s)" \
@@ -2046,6 +2057,7 @@ BenchmarkMenu() {
                         10 "Clear History — delete log and baseline" \
                         2>&1 > "$CURR_TTY")
         [ $? -ne 0 ] && return
+        LAST_CHOICE="$CHOICE"
         case $CHOICE in
             1)  BenchmarkCPU ;;
             2)  BenchmarkRAM ;;
