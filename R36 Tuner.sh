@@ -42,6 +42,37 @@ FindDMCDevfreq() {
     done
 }
 
+# Returns "opp-microvolt-LX" for the active bin, or "opp-microvolt" as fallback.
+# Arg 1 (optional): extra dmesg pattern to try first (e.g. "gpu|ff400000|mali", "dmc").
+# Fallback reads /proc/device-tree when dmesg ring buffer has rotated.
+DetectOPPBinProp() {
+    local extra_pat="$1" bin=""
+    [ -n "$extra_pat" ] && \
+        bin=$(dmesg 2>/dev/null | grep -iE "$extra_pat" \
+            | grep "opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+    [ -z "$bin" ] && \
+        bin=$(dmesg 2>/dev/null \
+            | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
+    if [ -z "$bin" ]; then
+        local opp_dir=""
+        for p in /proc/device-tree/cpu0-opp-table /proc/device-tree/opp-table-0 \
+                 /proc/device-tree/opp-table; do
+            [ -d "$p" ] && opp_dir="$p" && break
+        done
+        if [ -n "$opp_dir" ]; then
+            for lvl in 0 1 2 3; do
+                local found=0
+                for f in "$opp_dir"/opp-*/opp-microvolt-L${lvl} \
+                         "$opp_dir"/opp@*/opp-microvolt-L${lvl}; do
+                    [ -f "$f" ] && found=1 && break
+                done
+                [ $found -eq 1 ] && bin="L${lvl}" && break
+            done
+        fi
+    fi
+    [ -n "$bin" ] && echo "opp-microvolt-${bin}" || echo "opp-microvolt"
+}
+
 CPU_POLICY="/sys/devices/system/cpu/cpufreq/policy0"
 GPU_DEVFREQ=$(FindGPUDevfreq)
 DMC_DEVFREQ=$(FindDMCDevfreq)
@@ -51,10 +82,7 @@ VDD_LOGIC=$(FindRegulatorDir "vdd_logic")
 VCC_DDR=$(FindRegulatorDir "vcc_ddr")
 
 # Detect active OPP bin level — used by GetDTBStatus and DTBUndervoltMenu
-DTB_STATUS_PROP="opp-microvolt"
-_dtb_bin=$(dmesg 2>/dev/null | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-[ -n "$_dtb_bin" ] && DTB_STATUS_PROP="opp-microvolt-${_dtb_bin}"
-unset _dtb_bin
+DTB_STATUS_PROP=$(DetectOPPBinProp)
 
 # Detect gptokeyb — prefer system PATH, fall back to dArkOSRE location
 GPTOKEYB_BIN=$(command -v gptokeyb 2>/dev/null || echo "/opt/inttools/gptokeyb")
@@ -364,14 +392,9 @@ DTBGPUUndervoltMenu() {
         return
     fi
 
-    # Detect GPU bin level from dmesg; fallback to CPU bin
-    local GPU_BIN_PROP="opp-microvolt"
-    local GPU_BIN; GPU_BIN=$(dmesg 2>/dev/null \
-        | grep -iE "gpu|ff400000|mali" | grep "opp-binning.*using OPP prop name" \
-        | tail -1 | grep -o 'L[0-9]')
-    [ -z "$GPU_BIN" ] && GPU_BIN=$(dmesg 2>/dev/null \
-        | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-    [ -n "$GPU_BIN" ] && GPU_BIN_PROP="opp-microvolt-${GPU_BIN}"
+    # Detect GPU bin level — dmesg (GPU-specific → CPU fallback) → /proc/device-tree
+    local GPU_BIN_PROP; GPU_BIN_PROP=$(DetectOPPBinProp "gpu|ff400000|mali")
+    local GPU_BIN=""; [[ "$GPU_BIN_PROP" == *-L* ]] && GPU_BIN="${GPU_BIN_PROP##*-}"
 
     # Read ALL GPU OPP nodes into arrays (sorted by freq)
     local GPU_NODES=() GPU_FREQS_MHZ=() GPU_VOLTS_UV=()
@@ -769,7 +792,7 @@ DTBUndervoltMenu() {
         && GPU_OC_STATUS=" [ACTIVE]"
 
     local DMC_OC_STATUS=""
-    grep -q "928000000" /sys/class/devfreq/dmc/available_frequencies 2>/dev/null \
+    [ -n "$DMC_DEVFREQ" ] && grep -q "928000000" "$DMC_DEVFREQ/available_frequencies" 2>/dev/null \
         && DMC_OC_STATUS=" [ACTIVE]"
 
     local DTB_ITEMS=$(( 7 + ${#RESTORE_OPT[@]} / 2 ))
@@ -877,10 +900,9 @@ DTBUndervoltMenu() {
         return
     fi
 
-    # 4. Detect active OPP bin level from dmesg (Rockchip opp-binning)
-    local OPP_BIN_PROP="opp-microvolt"
-    local BIN_LEVEL; BIN_LEVEL=$(dmesg 2>/dev/null | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-    [ -n "$BIN_LEVEL" ] && OPP_BIN_PROP="opp-microvolt-${BIN_LEVEL}"
+    # 4. Detect active OPP bin level — dmesg → /proc/device-tree fallback
+    local OPP_BIN_PROP; OPP_BIN_PROP=$(DetectOPPBinProp)
+    local BIN_LEVEL=""; [[ "$OPP_BIN_PROP" == *-L* ]] && BIN_LEVEL="${OPP_BIN_PROP##*-}"
 
     # CPU OC 1608 MHz — needs only DTB, OPP_BASE, and bin prop
     if [ "$ACTION" = "oc" ]; then
@@ -1214,6 +1236,10 @@ DTBCPUOC() {
     fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" opp-hz 0 1608000000 2>/dev/null || FAIL=1
     fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" "$OPP_BIN_PROP" \
         $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null || FAIL=1
+    # Write generic opp-microvolt too if binning active (some kernels read both)
+    [ "$OPP_BIN_PROP" != "opp-microvolt" ] && \
+        fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" opp-microvolt \
+            $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null
     # Disable AVS OPP stripping
     fdtput -t u "$DTB" "$OPP_BASE" "rockchip,avs-scale" 0 2>/dev/null || FAIL=1
 
@@ -1255,14 +1281,9 @@ DTBGPUOC() {
         return
     fi
 
-    # Detect GPU bin level from dmesg; fallback to CPU bin (same as DTBGPUUndervoltMenu)
-    local GPU_BIN_PROP="opp-microvolt"
-    local GPU_BIN; GPU_BIN=$(dmesg 2>/dev/null \
-        | grep -iE "gpu|ff400000|mali" | grep "opp-binning.*using OPP prop name" \
-        | tail -1 | grep -o 'L[0-9]')
-    [ -z "$GPU_BIN" ] && GPU_BIN=$(dmesg 2>/dev/null \
-        | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-    [ -n "$GPU_BIN" ] && GPU_BIN_PROP="opp-microvolt-${GPU_BIN}"
+    # Detect GPU bin level — dmesg (GPU-specific → CPU fallback) → /proc/device-tree
+    local GPU_BIN_PROP; GPU_BIN_PROP=$(DetectOPPBinProp "gpu|ff400000|mali")
+    local GPU_BIN=""; [[ "$GPU_BIN_PROP" == *-L* ]] && GPU_BIN="${GPU_BIN_PROP##*-}"
 
     # Current state
     local IS_ACTIVE=0
@@ -1359,17 +1380,13 @@ DTBRAMOC() {
         return
     fi
 
-    # Detect bin level — try DMC-specific first, fallback to CPU bin
-    local DMC_BIN_PROP="opp-microvolt"
-    local DMC_BIN; DMC_BIN=$(dmesg 2>/dev/null \
-        | grep "dmc.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-    [ -z "$DMC_BIN" ] && DMC_BIN=$(dmesg 2>/dev/null \
-        | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
-    [ -n "$DMC_BIN" ] && DMC_BIN_PROP="opp-microvolt-${DMC_BIN}"
+    # Detect bin level — dmesg (DMC-specific → CPU fallback) → /proc/device-tree
+    local DMC_BIN_PROP; DMC_BIN_PROP=$(DetectOPPBinProp "dmc")
+    local DMC_BIN=""; [[ "$DMC_BIN_PROP" == *-L* ]] && DMC_BIN="${DMC_BIN_PROP##*-}"
 
     # Current state — available_frequencies contains 928000000 if OPP active
     local IS_ACTIVE=0
-    grep -q "928000000" /sys/class/devfreq/dmc/available_frequencies 2>/dev/null \
+    [ -n "$DMC_DEVFREQ" ] && grep -q "928000000" "$DMC_DEVFREQ/available_frequencies" 2>/dev/null \
         && IS_ACTIVE=1
     local HAS_NODE=0
     fdtget "$DTB" "$DMC_OPP/opp-928000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
@@ -1503,6 +1520,12 @@ BenchmarkCPU() {
     local CPU_BENCH=/tmp/r36_cpubench
 
     # Compile benchmark on first use
+    if [ ! -x "$CPU_BENCH" ] && ! command -v gcc >/dev/null 2>&1; then
+        dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
+            --msgbox "gcc not found — cannot compile ALU benchmark.\nInstall: apt install gcc" \
+            6 55 > "$CURR_TTY"
+        return
+    fi
     if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
         cat > /tmp/r36_cpubench.c << 'CSRC'
 #include <stdio.h>
@@ -1611,6 +1634,13 @@ InstallGlmark2Legacy() {
             rm -f "$dst"; return 1
         fi
         chmod +x "$dst"
+        local _expected="52c861733bf1c195e086867d3ccb29f76feb9169ac46b7255f64393d4ba55b98"
+        local _actual; _actual=$(sha256sum "$dst" 2>/dev/null | awk '{print $1}')
+        if [ "$_actual" != "$_expected" ]; then
+            dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
+                --msgbox "Binary integrity check failed.\nCorrupt extraction — try re-running." 6 50 > "$CURR_TTY"
+            rm -f "$dst"; return 1
+        fi
     fi
 
     # Patch data: glmark2 2023.01 shaders use MEDIUMP_OR_DEFAULT/HIGHP_OR_DEFAULT
@@ -1756,11 +1786,47 @@ BenchmarkClearHistory() {
 
 StressTestCPU() {
     local SILENT="${1:-0}"
+    local CPU_BENCH=/tmp/r36_cpubench
+
+    # Compile C benchmark if not ready (same source as BenchmarkCPU)
+    if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
+        cat > /tmp/r36_cpubench.c << 'CSRC'
+#include <stdio.h>
+#include <time.h>
+int main() {
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    volatile unsigned int x = 1;
+    long long iters = 0;
+    do {
+        for (int i = 0; i < 10000000; i++)
+            x = x * 1664525u + 1013904223u;
+        iters += 10000000;
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+    } while ((t1.tv_sec - t0.tv_sec) < 10);
+    printf("%lld\n", iters);
+    return 0;
+}
+CSRC
+        gcc -O2 -o "$CPU_BENCH" /tmp/r36_cpubench.c 2>/dev/null
+    fi
+
+    # Need at least one stress source
+    if [ ! -x "$CPU_BENCH" ] && ! command -v openssl >/dev/null 2>&1; then
+        dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS ]" \
+            --msgbox "Cannot run stress test.\ngcc not found (ALU benchmark) and openssl not found.\nInstall: apt install gcc" \
+            7 55 > "$CURR_TTY"
+        return 1
+    fi
+
+    local STRESS_SRC="ALU benchmark"
+    [ ! -x "$CPU_BENCH" ] && STRESS_SRC="openssl sha256"
+
     local DURATION=300
     local END=$(( $(date +%s) + DURATION ))
     local MAX_TEMP=0 MIN_TEMP=999 TEMP_SUM=0 TEMP_COUNT=0
     dialog --backtitle "$BACKTITLE" --title "[ CPU STRESS TEST ]" \
-        --infobox "Burning CPU for ${DURATION}s (5 min) via openssl...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 8 52 > "$CURR_TTY"
+        --infobox "Burning CPU for ${DURATION}s (5 min) via ${STRESS_SRC}...\nSafety: auto-abort at 85°C\n\nLet it run — don't press anything." 8 58 > "$CURR_TTY"
 
     while [ "$(date +%s)" -lt "$END" ]; do
         local T; T=$(GetTempC)
@@ -1775,7 +1841,11 @@ StressTestCPU() {
             TEMP_SUM=$(( TEMP_SUM + T ))
             TEMP_COUNT=$(( TEMP_COUNT + 1 ))
         fi
-        openssl speed sha256 >/dev/null 2>&1
+        if [ -x "$CPU_BENCH" ]; then
+            "$CPU_BENCH" >/dev/null 2>&1
+        else
+            openssl speed sha256 >/dev/null 2>&1
+        fi
     done
 
     local AVG_TEMP=0
@@ -2004,6 +2074,15 @@ export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
 [ -x "$GPTOKEYB_BIN" ] && "$GPTOKEYB_BIN" -1 "R36_Tuner_v${VERSION}" \
     ${GPTOKEYB_CFG:+-c "$GPTOKEYB_CFG"} > /dev/null 2>&1 &
 sleep 1
+
+# Pre-flight: warn if not running on RK3326/PX30 hardware
+if ! strings /proc/device-tree/compatible 2>/dev/null | grep -qE "rockchip,(rk3326|px30)"; then
+    _compat=$(strings /proc/device-tree/compatible 2>/dev/null | head -3 | tr '\n' ' ')
+    dialog --backtitle "$BACKTITLE" --title "[ HARDWARE WARNING ]" \
+        --msgbox "This device may not be RK3326/PX30.\n\nDetected: ${_compat:-unknown}\n\nDTB tuning features may not apply correctly.\nProceed with caution." \
+        9 60 > "$CURR_TTY"
+    unset _compat
+fi
 
 # Warn if last boot profile caused a hang
 if [ -f "${CONFIG_FILE}.failed" ]; then
