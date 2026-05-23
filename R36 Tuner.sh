@@ -1790,8 +1790,12 @@ BenchmarkGPU() {
     cat > /tmp/gpu_bench_runner.sh << 'RUNNER_EOF'
 #!/bin/bash
 GL_LOG=/tmp/gpu_bench_out.txt
+TEMP_LOG=/tmp/gpu_bench_temps.txt
 SCORES=/etc/r36_tuner_scores.log
 PENDING=/tmp/gpu_bench_pending
+THERMAL=/sys/class/thermal/thermal_zone0/temp
+
+get_temp() { awk '{printf "%.0f",$1/1000}' "$THERMAL" 2>/dev/null; }
 
 sleep 2
 systemctl stop emulationstation 2>/dev/null
@@ -1799,23 +1803,36 @@ sleep 3
 pkill -9 -x emulationstation 2>/dev/null
 sleep 1
 
-rm -f "$GL_LOG"
+TEMP_START=$(get_temp)
+rm -f "$GL_LOG" "$TEMP_LOG"
+
+# Sample temp every 2s in background while glmark2 runs
+( while true; do get_temp >> "$TEMP_LOG"; sleep 2; done ) &
+SAMPLER_PID=$!
+
 glmark2-es2-drm --off-screen --size 320x240 \
     -b build:duration=15 -b texture:duration=15 \
     -b shading:duration=15 -b terrain:duration=15 > "$GL_LOG" 2>&1
 
+kill "$SAMPLER_PID" 2>/dev/null
+
+TEMP_MAX=$(sort -n "$TEMP_LOG" 2>/dev/null | tail -1)
+TEMP_AVG=$(awk '{s+=$1;n++} END{if(n>0)printf "%.0f",s/n}' "$TEMP_LOG" 2>/dev/null)
+[ -z "$TEMP_MAX" ] && TEMP_MAX=$(get_temp)
+[ -z "$TEMP_AVG" ] && TEMP_AVG=$TEMP_MAX
+
 SCORE=$(grep "glmark2 Score:" "$GL_LOG" | awk '{print $NF}')
 if [ -n "$SCORE" ]; then
     GPU_MHZ=$(for d in /sys/class/devfreq/*; do case "$(basename "$d")" in *gpu*|*mali*|*ff400000*) cat "$d/max_freq" 2>/dev/null && break ;; esac; done | awk '{printf "%d",$1/1000000}')
-    TEMP=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk '{printf "%.0f",$1/1000}')
-    echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp=${TEMP}C" >> "$SCORES"
-    printf "GPU Score: %s pts\nGPU: %sMHz  Temp: %sC\n\nSaved to history." \
-        "$SCORE" "$GPU_MHZ" "$TEMP" > "$PENDING"
+    echo "$(date '+%Y-%m-%d %H:%M') GPU  ${SCORE} pts  GPU=${GPU_MHZ}MHz temp_max=${TEMP_MAX}C" >> "$SCORES"
+    printf "GPU Score: %s pts\nGPU: %s MHz\n\nTemp start: %s°C  avg: %s°C  max: %s°C\n\nSaved to history." \
+        "$SCORE" "$GPU_MHZ" "$TEMP_START" "$TEMP_AVG" "$TEMP_MAX" > "$PENDING"
 else
     ERR=$(grep -i "error\|failed\|warning" "$GL_LOG" 2>/dev/null | tail -3 | tr '\n' ' ')
     printf "GPU bench failed.\n\n%s" "$ERR" > "$PENDING"
 fi
 
+rm -f "$TEMP_LOG"
 systemctl start emulationstation 2>/dev/null
 RUNNER_EOF
 
@@ -2219,7 +2236,7 @@ if [ -f /tmp/gpu_bench_pending ]; then
     PENDING_MSG=$(cat /tmp/gpu_bench_pending)
     rm -f /tmp/gpu_bench_pending
     dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULTADO ]" \
-        --msgbox "${PENDING_MSG}" 10 52 > "$CURR_TTY"
+        --msgbox "${PENDING_MSG}" 12 52 > "$CURR_TTY"
 fi
 
 trap ExitMenu EXIT
