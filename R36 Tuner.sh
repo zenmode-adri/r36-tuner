@@ -2015,18 +2015,18 @@ ValidateGPUUndervolt() {
 
     local LEGACY_BIN="/usr/local/bin/glmark2-es2-drm-legacy"
     local DTB_ST; DTB_ST=$(GetDTBStatus)
-    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
-        --yesno "Test GPU undervolt — terrain ON-SCREEN (~30s).\n\nDTB: ${DTB_ST}\nScreen shows spinning 3D terrain.\nArtifacts / freeze / crash = unstable.\n\nContinue?" 11 58 > "$CURR_TTY"
+    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU ]" \
+        --yesno "Test GPU stability — terrain ON-SCREEN (~1min).\n\nDTB: ${DTB_ST}\nScreen shows spinning 3D terrain.\nArtifacts / freeze / crash = unstable.\n\nContinue?" 11 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU UV ]" \
-        --infobox "Stopping EmulationStation...\nGlmark2 terrain on-screen ~30s." 5 50 > "$CURR_TTY"
+    dialog --backtitle "$BACKTITLE" --title "[ VALIDATE GPU ]" \
+        --infobox "Stopping EmulationStation...\nGlmark2 terrain on-screen ~1min." 5 50 > "$CURR_TTY"
     pkill -9 -x emulationstation 2>/dev/null
     sleep 2
 
     local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
     "$LEGACY_BIN" --data-path /usr/local/share/glmark2data \
-        --size 320x240 -b terrain:duration=30 > "$GL_LOG" 2>&1
+        --size 320x240 -b terrain:duration=60 > "$GL_LOG" 2>&1
 
     systemctl start emulationstation 2>/dev/null
     sleep 1
@@ -2067,7 +2067,7 @@ BenchmarkMenu() {
                         4  "All           — CPU + RAM + GPU" \
                         5  "CPU Stress    — 5min full load, abort 85°C" \
                         6  "Validate CPU  — benchmark + stress + verdict" \
-                        7  "Validate GPU UV — terrain ~30s + verdict" \
+                        7  "Validate GPU    — terrain ~1min + verdict" \
                         8  "Set Baseline  — mark next CPU run as 100%" \
                         9  "View History  — scrollable, all entries" \
                         10 "Clear History — delete log and baseline" \
