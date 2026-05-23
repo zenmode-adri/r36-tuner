@@ -2080,22 +2080,43 @@ ValidateGPUUndervolt() {
     sleep 2
 
     local GL_LOG; GL_LOG=$(mktemp /tmp/gpu_uv_XXXXXX.txt)
+    local TMPF=/tmp/r36_gpu_temps_$$
+    ( while true; do
+        printf "%s %s\n" "$(GetTempC)" "$(GetGPUCurMHz)"
+        sleep 2
+    done ) > "$TMPF" 2>/dev/null &
+    local SAMPLER_PID=$!
+
     "$LEGACY_BIN" --data-path /usr/local/share/glmark2data \
         --size 320x240 -b terrain:duration=60 > "$GL_LOG" 2>&1
+
+    kill "$SAMPLER_PID" 2>/dev/null; wait "$SAMPLER_PID" 2>/dev/null
+
+    local T_INIT="?" T_MAX=0 T_SUM=0 T_CNT=0 GPU_PEAK=0
+    while read -r t g; do
+        [[ "$t" =~ ^[0-9]+$ ]] || continue
+        [ $T_CNT -eq 0 ] && T_INIT=$t
+        [ "$t" -gt "$T_MAX" ] && T_MAX=$t
+        T_SUM=$(( T_SUM + t )); T_CNT=$(( T_CNT + 1 ))
+        [[ "$g" =~ ^[0-9]+$ ]] && [ "$g" -gt "$GPU_PEAK" ] && GPU_PEAK=$g
+    done < "$TMPF"
+    rm -f "$TMPF"
+    local T_AVG="?"; [ $T_CNT -gt 0 ] && T_AVG=$(( T_SUM / T_CNT ))
+    local TEMP_DISP="${T_INIT}°C → avg ${T_AVG}°C → peak ${T_MAX}°C"
+    local GPU_MHZ="${GPU_PEAK}"
+    [ "$GPU_PEAK" -eq 0 ] && GPU_MHZ=$(GetGPUMaxMHz)
 
     systemctl start emulationstation 2>/dev/null
     sleep 1
 
     local FPS; FPS=$(grep "\[terrain\]" "$GL_LOG" | grep -oE 'FPS: [0-9]+' | awk '{print $2}' | tail -1)
-    local GPU_MHZ; GPU_MHZ=$(GetGPUMaxMHz)
-    local TEMP; TEMP=$(GetTempC)
 
     if [ -n "$FPS" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  DTB=${DTB_ST}  GPU=${GPU_MHZ}MHz  temp=${TEMP}C" >> "$SCORES_FILE"
+        echo "$(date '+%Y-%m-%d %H:%M') GPU-UV  ${FPS} fps (terrain-onscreen)  DTB=${DTB_ST}  GPU=${GPU_MHZ}MHz  ${TEMP_DISP}" >> "$SCORES_FILE"
         local VERDICT="STABLE"
         [ "$FPS" -lt 10 ] && VERDICT="UNSTABLE (fps too low)"
         dialog --backtitle "$BACKTITLE" --title "[ GPU UV — RESULT ]" \
-            --msgbox "Terrain on-screen: ${FPS} fps\nGPU: ${GPU_MHZ} MHz  |  Temp: ${TEMP}°C\nDTB: ${DTB_ST}\nVerdict: ${VERDICT}\n\nBaseline stock: ~15 fps off-screen / ~14 fps on-screen\nArtifacts / freeze / crash = unstable.\n\nSaved to history." \
+            --msgbox "Terrain on-screen: ${FPS} fps\nGPU peak: ${GPU_MHZ} MHz  |  DTB: ${DTB_ST}\nTemp: ${TEMP_DISP}\nVerdict: ${VERDICT}\n\nBaseline stock: ~15 fps off-screen / ~14 fps on-screen\nArtifacts / freeze / crash = unstable.\n\nSaved to history." \
             13 56 > "$CURR_TTY"
     else
         local ERR; ERR=$(tail -3 "$GL_LOG" 2>/dev/null | tr '\n' ' ')
