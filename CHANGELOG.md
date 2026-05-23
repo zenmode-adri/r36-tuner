@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.0 — 2026-05-23
+
+**UI polish:**
+
+- Fix: Real-Time Monitor rewritten with pure ASCII box drawing (Unicode box characters rendered as double-width on tty1, causing line wrap and misalignment). Box is now centered based on actual terminal dimensions (`stty size`). Each line positioned with absolute ANSI cursor escape sequences. Trend indicators changed from Unicode arrows (↑↓→) to ASCII (`^` `v` `~`).
+- Fix: Extra blank row removed from CPU Max Freq, CPU Min Freq, CPU Governor, GPU Max Freq, and Benchmark menus (dialog height was COUNT+7; corrected to COUNT+6).
+- Fix: CPU Max Freq menu subtitle "Voltage auto via OPP | Voltage menu for undervolt" removed — subtitle is now "★ = current".
+- Fix: "GPU Tuning" renamed to "GPU Max Freq" in the main menu and all error dialogs.
+
 ## v3.9 — 2026-05-23
 
 **Bug fixes found during release audit:**

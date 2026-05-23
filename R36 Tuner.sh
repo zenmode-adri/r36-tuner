@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v3.9 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v4.0 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="3.9"
+VERSION="4.0"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -616,13 +616,13 @@ CPUTuningMenu() {
     done <<< "$AVAIL"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+    local H=$(( COUNT + 6 )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
                  --title "[ CPU MAX FREQUENCY ]" \
                  --default-item "$CUR_MAX" \
-                 --menu "Voltage auto via OPP  |  Voltage menu for undervolt  |  ★ = current" \
+                 --menu "★ = current" \
                  $H 62 $COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
@@ -654,7 +654,7 @@ CPUMinFreqMenu() {
     done <<< "$(echo "$AVAIL" | sort -n)"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+    local H=$(( COUNT + 6 )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
@@ -711,7 +711,7 @@ GovernorMenu() {
                  --title "[ CPU GOVERNOR ]" \
                  --default-item "$CUR_GOV" \
                  --menu "★ = active  |  Save Profile to persist at boot" \
-                 $(( GOV_COUNT + 7 )) 62 $GOV_COUNT \
+                 $(( GOV_COUNT + 6 )) 62 $GOV_COUNT \
                  "${CHOICES[@]}" \
                  2>&1 > "$CURR_TTY")
     [ -z "$SEL" ] && return
@@ -723,14 +723,14 @@ GovernorMenu() {
 
 GPUTuningMenu() {
     if [ -z "$GPU_DEVFREQ" ]; then
-        dialog --backtitle "$BACKTITLE" --title "GPU Tuning" \
+        dialog --backtitle "$BACKTITLE" --title "GPU Max Freq" \
             --msgbox "GPU devfreq not found.\nSearched: *gpu*  *mali*  *ff400000*" 6 52 > "$CURR_TTY"
         return
     fi
 
     local AVAIL; AVAIL=$(GetGPUAvail)
     if [ -z "$AVAIL" ]; then
-        dialog --backtitle "$BACKTITLE" --title "GPU Tuning" \
+        dialog --backtitle "$BACKTITLE" --title "GPU Max Freq" \
             --msgbox "Cannot read $GPU_DEVFREQ/available_frequencies" 5 58 > "$CURR_TTY"
         return
     fi
@@ -744,7 +744,7 @@ GPUTuningMenu() {
     done <<< "$AVAIL"
 
     local COUNT=$(( ${#CHOICES[@]} / 2 ))
-    local H=$(( COUNT + 7 )); [ $H -gt 20 ] && H=20
+    local H=$(( COUNT + 6 )); [ $H -gt 20 ] && H=20
 
     local SEL
     SEL=$(dialog --backtitle "$BACKTITLE" \
@@ -1488,54 +1488,57 @@ DTBRAMOC() {
 # ── Real-Time Monitor ─────────────────────────────────────────────────────────
 
 MonitorMenu() {
-    local PREV_TEMP="" TREND="→"
-    printf '\033[2J\033[H' >"$CURR_TTY"
+    local PREV_TEMP="" TREND=">"
+    local COLS ROWS SC SR R
+    read ROWS COLS < <(stty size <"$CURR_TTY" 2>/dev/null) || { ROWS=24; COLS=80; }
+    local BOX_W=45 BOX_H=16
+    SC=$(( (COLS - BOX_W) / 2 + 1 )); [ "$SC" -lt 1 ] && SC=1
+    SR=$(( (ROWS - BOX_H) / 2 + 1 )); [ "$SR" -lt 1 ] && SR=1
+    printf '\033[2J\033[?25l' >"$CURR_TTY"
 
     while true; do
         local TEMP; TEMP=$(GetTempC)
         if [[ "$TEMP" =~ ^[0-9]+$ ]] && [[ "$PREV_TEMP" =~ ^[0-9]+$ ]]; then
-            if   [ "$TEMP" -gt $(( PREV_TEMP + 1 )) ]; then TREND="↑"
-            elif [ "$TEMP" -lt $(( PREV_TEMP - 1 )) ]; then TREND="↓"
-            else TREND="→"
+            if   [ "$TEMP" -gt $(( PREV_TEMP + 1 )) ]; then TREND="^"
+            elif [ "$TEMP" -lt $(( PREV_TEMP - 1 )) ]; then TREND="v"
+            else TREND="~"
             fi
         fi
         PREV_TEMP="$TEMP"
-        local TEMP_DISP="${TEMP}°C ${TREND}"
-        [[ "$TEMP" =~ ^[0-9]+$ ]] && [ "$TEMP" -ge 80 ] && TEMP_DISP="${TEMP}°C ${TREND} [HOT!]"
+        local TEMP_DISP="${TEMP}C ${TREND}"
+        [[ "$TEMP" =~ ^[0-9]+$ ]] && [ "$TEMP" -ge 80 ] && TEMP_DISP="${TEMP}C ${TREND} [HOT!]"
 
+        local CPU_CUR CPU_MAX CPU_MIN CPU_V CPU_GOV GPU_CUR GPU_MAX GPU_V DMC_CUR DMC_MAX DMC_V
+        CPU_CUR=$(GetCPUCurMHz); CPU_MAX=$(GetCPUMaxMHz); CPU_MIN=$(GetCPUMinMHz)
+        CPU_V="$(GetRegVoltMV "$VDD_ARM") mV"; CPU_GOV=$(GetGOV)
+        GPU_CUR=$(GetGPUCurMHz); GPU_MAX=$(GetGPUMaxMHz)
+        GPU_V="$(GetRegVoltMV "$VDD_LOGIC") mV"
+        DMC_CUR=$(GetDMCCurMHz); DMC_MAX=$(GetDMCMaxMHz)
+        DMC_V="$(GetRegVoltMV "$VCC_DDR") mV"
+
+        R=$SR
         {
-            printf '\033[H'
-            printf \
-"╔══════════ R36 TUNER MONITOR ══════════╗\n\
-║ Temperature : %-16s           ║\n\
-╠════════════════ CPU ═══════════════════╣\n\
-║ Cur / Max   : %-6s / %-6s MHz     ║\n\
-║ Min Freq    : %-6s MHz                ║\n\
-║ Voltage     : %-10s                ║\n\
-║ Governor    : %-15s           ║\n\
-╠════════════════ GPU ═══════════════════╣\n\
-║ Cur / Max   : %-6s / %-6s MHz     ║\n\
-║ Voltage     : %-10s                ║\n\
-╠══════════════ DMC / RAM ═══════════════╣\n\
-║ Cur / Max   : %-6s / %-6s MHz     ║\n\
-║ Voltage     : %-10s                ║\n\
-╚═══════════════════════════════════════╝\n\
-\n\
-  [ any button → back ]\n" \
-                "$TEMP_DISP" \
-                "$(GetCPUCurMHz)" "$(GetCPUMaxMHz)" \
-                "$(GetCPUMinMHz)" \
-                "$(GetRegVoltMV "$VDD_ARM") mV" "$(GetGOV)" \
-                "$(GetGPUCurMHz)" "$(GetGPUMaxMHz)" \
-                "$(GetRegVoltMV "$VDD_LOGIC") mV" \
-                "$(GetDMCCurMHz)" "$(GetDMCMaxMHz)" \
-                "$(GetRegVoltMV "$VCC_DDR") mV"
+            printf '\033[%d;%dH+============ R36 TUNER MONITOR ============+' "$R" "$SC"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Temperature : %-14s             |'         "$R" "$SC" "$TEMP_DISP"; R=$(( R+1 ))
+            printf '\033[%d;%dH+------------------- CPU -------------------+' "$R" "$SC"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Cur / Max   : %5s / %5s MHz          |'   "$R" "$SC" "$CPU_CUR" "$CPU_MAX"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Min Freq    : %5s MHz                  |'  "$R" "$SC" "$CPU_MIN"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Voltage     : %-10s                 |'    "$R" "$SC" "$CPU_V"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Governor    : %-12s               |'      "$R" "$SC" "$CPU_GOV"; R=$(( R+1 ))
+            printf '\033[%d;%dH+------------------- GPU -------------------+' "$R" "$SC"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Cur / Max   : %5s / %5s MHz          |'   "$R" "$SC" "$GPU_CUR" "$GPU_MAX"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Voltage     : %-10s                 |'    "$R" "$SC" "$GPU_V"; R=$(( R+1 ))
+            printf '\033[%d;%dH+---------------- DMC / RAM ----------------+' "$R" "$SC"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Cur / Max   : %5s / %5s MHz          |'   "$R" "$SC" "$DMC_CUR" "$DMC_MAX"; R=$(( R+1 ))
+            printf '\033[%d;%dH|  Voltage     : %-10s                 |'    "$R" "$SC" "$DMC_V"; R=$(( R+1 ))
+            printf '\033[%d;%dH+===========================================+' "$R" "$SC"; R=$(( R+2 ))
+            printf '\033[%d;%dH           [ any button -> back ]            ' "$R" "$SC"
         } >"$CURR_TTY"
 
         read -r -s -t 0.5 -n 1 _ <"$CURR_TTY" 2>/dev/null && break
     done
 
-    printf '\033[2J\033[H' >"$CURR_TTY"
+    printf '\033[2J\033[H\033[?25h' >"$CURR_TTY"
 }
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
@@ -1969,7 +1972,7 @@ BenchmarkMenu() {
                     --ok-label "Run" \
                     --cancel-label "Back" \
                     --menu "Select test to run" \
-                    17 62 10 \
+                    16 62 10 \
                     1  "CPU           — int ALU               (~10s)" \
                     2  "RAM           — 128MB r/w             (~8s)" \
                     3  "GPU           — glmark2-es2-drm        (~1min)" \
@@ -2066,7 +2069,7 @@ MainMenu() {
                         1  "CPU Max Freq        ($(GetCPUMaxMHz) MHz)" \
                         2  "CPU Min Freq        ($(GetCPUMinMHz) MHz)" \
                         3  "CPU Governor        ($(GetGOV))" \
-                        4  "GPU Tuning          ($(GetGPUMaxMHz) MHz)" \
+                        4  "GPU Max Freq        ($(GetGPUMaxMHz) MHz)" \
                         5  "DTB Tuning          ($(GetDTBStatus))" \
                         6  "Real-Time Monitor" \
                         7  "Benchmark" \
