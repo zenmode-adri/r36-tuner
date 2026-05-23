@@ -1,5 +1,5 @@
 #!/bin/bash
-# R36 Tuner v4.1 — CPU / GPU / DMC / Voltage tuning for R36S (RK3326)
+# R36 Tuner v4.1 — CPU / GPU / RAM / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
@@ -265,7 +265,7 @@ SCRIPTEOF
 
     cat > "$SVC_FILE" << EOF
 [Unit]
-Description=R36 Tuner — apply CPU/GPU/DMC/Voltage profile at boot
+Description=R36 Tuner — apply CPU/GPU/RAM/Voltage profile at boot
 After=multi-user.target
 
 [Service]
@@ -1397,8 +1397,8 @@ DTBRAMOC() {
         fdtget "$DTB" "$candidate" compatible >/dev/null 2>&1 && DMC_OPP="$candidate" && break
     done
     if [ -z "$DMC_OPP" ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ DMC OC ]" \
-            --msgbox "DMC OPP table not found in DTB." 5 48 > "$CURR_TTY"
+        dialog --backtitle "$BACKTITLE" --title "[ RAM OC ]" \
+            --msgbox "RAM (DMC) OPP table not found in DTB." 5 48 > "$CURR_TTY"
         return
     fi
 
@@ -1422,13 +1422,13 @@ DTBRAMOC() {
         STATE_MSG="Status: not active — DTB patch required\n\n"
     fi
 
-    local DMC_OC_BODY="ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for DMC OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change."
+    local DMC_OC_BODY="ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for RAM OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change."
     if [ "$DMC_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ DMC / RAM OC — 928 MHz ]" \
+        dialog --backtitle "$BACKTITLE" --title "[ RAM OC — 928 MHz ]" \
             --msgbox "${STATE_MSG}${DMC_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 60 > "$CURR_TTY"
         return
     fi
-    dialog --backtitle "$BACKTITLE" --title "[ DMC / RAM OC — 928 MHz ]" \
+    dialog --backtitle "$BACKTITLE" --title "[ RAM OC — 928 MHz ]" \
         --yesno "${STATE_MSG}${DMC_OC_BODY}\n\nContinue?" 19 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
@@ -1444,7 +1444,7 @@ DTBRAMOC() {
         v=$(( v - 12500 ))
     done
     local VOLT_UV
-    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ DMC OC — VOLTAGE @ 928 MHz ]" \
+    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — VOLTAGE @ 928 MHz ]" \
         --menu "Stock 786 MHz = ${STOCK_DMC_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
         19 62 10 \
         "${VOLT_ITEMS[@]}" \
@@ -1458,7 +1458,7 @@ DTBRAMOC() {
         && BAK_NOTE="Backup: ${DTB}.bak (existing)" \
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
-    dialog --backtitle "$BACKTITLE" --title "[ DMC OC — CONFIRM ]" \
+    dialog --backtitle "$BACKTITLE" --title "[ RAM OC — CONFIRM ]" \
         --yesno "Apply RAM OC 928 MHz (ATF: 924 MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/opp-928000000\n    opp-hz: 0 928000000\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 13 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
@@ -1466,7 +1466,7 @@ DTBRAMOC() {
         cp "$DTB" "${DTB}.bak" || { dialog --msgbox "Backup failed. Aborting." 5 40 > "$CURR_TTY"; return; }
     fi
 
-    dialog --infobox "Patching DMC OC DTB..." 4 35 > "$CURR_TTY"
+    dialog --infobox "Patching RAM OC DTB..." 4 35 > "$CURR_TTY"
 
     local FAIL=0
     fdtput -c "$DTB" "$DMC_OPP/opp-928000000" 2>/dev/null || FAIL=1
@@ -1479,11 +1479,11 @@ DTBRAMOC() {
         sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
-        dialog --backtitle "$BACKTITLE" --title "✓ DMC OC Patched" \
+        dialog --backtitle "$BACKTITLE" --title "✓ RAM OC Patched" \
             --yesno "928 MHz OPP added @ ${VOLT_STR} mV\n(ATF delivers 924 MHz)\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
-        dialog --backtitle "$BACKTITLE" --title "[ DMC OC ]" \
+        dialog --backtitle "$BACKTITLE" --title "[ RAM OC ]" \
             --msgbox "Patch failed. Restoring backup..." 5 45 > "$CURR_TTY"
         cp "${DTB}.bak" "$DTB"
     fi
@@ -1532,7 +1532,7 @@ MonitorMenu() {
             printf '\033[%d;%dH+------------------- GPU -------------------+' "$R" "$SC"; R=$(( R+1 ))
             printf '\033[%d;%dH|  Cur / Max   : %5s / %5s MHz          |'   "$R" "$SC" "$GPU_CUR" "$GPU_MAX"; R=$(( R+1 ))
             printf '\033[%d;%dH|  Voltage     : %-10s                 |'    "$R" "$SC" "$GPU_V"; R=$(( R+1 ))
-            printf '\033[%d;%dH+---------------- DMC / RAM ----------------+' "$R" "$SC"; R=$(( R+1 ))
+            printf '\033[%d;%dH+---------------- RAM (DMC) ----------------+' "$R" "$SC"; R=$(( R+1 ))
             printf '\033[%d;%dH|  Cur / Max   : %5s / %5s MHz          |'   "$R" "$SC" "$DMC_CUR" "$DMC_MAX"; R=$(( R+1 ))
             printf '\033[%d;%dH|  Voltage     : %-10s                 |'    "$R" "$SC" "$DMC_V"; R=$(( R+1 ))
             printf '\033[%d;%dH+===========================================+' "$R" "$SC"; R=$(( R+2 ))
@@ -1686,12 +1686,12 @@ CSRC
     local DMC_MV; DMC_MV=$(GetRegVoltMV "$VCC_DDR")
     local TEMP; TEMP=$(GetTempC)
 
-    printf "%s | DMC %s MHz | %s mV | %s°C | write: %s | copy: %s\n" \
+    printf "%s | RAM %s MHz | %s mV | %s°C | write: %s | copy: %s\n" \
         "$(date '+%Y-%m-%d %H:%M')" "$DMC_MHZ" "$DMC_MV" "$TEMP" "$RW" "$RC" \
         >> "$SCORES_FILE" 2>/dev/null
 
     dialog --backtitle "$BACKTITLE" --title "[ RAM RESULTS ]" \
-        --msgbox "Config: DMC ${DMC_MHZ} MHz  vcc_ddr: ${DMC_MV} mV\nTemp: ${TEMP}°C\n\nWrite (memset) : ${RW}\nCopy  (memcpy) : ${RC}" \
+        --msgbox "Config: RAM ${DMC_MHZ} MHz  vcc_ddr: ${DMC_MV} mV\nTemp: ${TEMP}°C\n\nWrite (memset) : ${RW}\nCopy  (memcpy) : ${RC}" \
         9 58 > "$CURR_TTY"
 }
 
@@ -2059,7 +2059,7 @@ SaveProfileMenu() {
     [ -f "$SVC_FILE" ] && systemctl is-enabled r36-tuner.service >/dev/null 2>&1 && BOOT_ACTIVE="Yes"
 
     dialog --backtitle "$BACKTITLE" --title "[ SAVE PROFILE ]" \
-        --yesno "Save current tuning as boot profile?\n\nCPU max   : $(GetCPUMaxMHz) MHz\nCPU min   : $(GetCPUMinMHz) MHz\nGPU max   : $(GetGPUMaxMHz) MHz\nDMC max   : $(GetDMCMaxMHz) MHz\nvdd_arm   : $(GetRegVoltMV "$VDD_ARM") mV\nvdd_logic : $(GetRegVoltMV "$VDD_LOGIC") mV\nvcc_ddr   : $(GetRegVoltMV "$VCC_DDR") mV\nGovernor  : $(GetGOV)\n\nFail-safe : panic flag active at boot\nAutostart : $BOOT_ACTIVE" \
+        --yesno "Save current tuning as boot profile?\n\nCPU max   : $(GetCPUMaxMHz) MHz\nCPU min   : $(GetCPUMinMHz) MHz\nGPU max   : $(GetGPUMaxMHz) MHz\nRAM max   : $(GetDMCMaxMHz) MHz\nvdd_arm   : $(GetRegVoltMV "$VDD_ARM") mV\nvdd_logic : $(GetRegVoltMV "$VDD_LOGIC") mV\nvcc_ddr   : $(GetRegVoltMV "$VCC_DDR") mV\nGovernor  : $(GetGOV)\n\nFail-safe : panic flag active at boot\nAutostart : $BOOT_ACTIVE" \
         17 55 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
