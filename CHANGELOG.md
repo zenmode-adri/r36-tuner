@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.1 — 2026-05-23
+
+**Fixes and improvements:**
+
+- Fix: Benchmark and DTB Tuning submenus now loop back to themselves after an action completes, instead of jumping to the main menu. Back button still exits to the main menu.
+- Fix: Main menu now shows the shadow and blue backtitle bar, matching all other submenus (was using `--no-shadow` without `--backtitle`).
+- Fix: Console font changed from `Lat7-TerminusBold22x11` to `Lat7-TerminusBold20x10`. The 22px font left an 18px black strip at the bottom of the 480px screen (480 ÷ 22 = 21.8 rows). The 20px font divides evenly (480 ÷ 20 = 24 rows) — no strip, and one extra line of screen space.
+- Fix: Gamepad button presses between dialogs no longer print characters to the console or scroll the screen. `stty -echo` is applied on startup and restored on exit.
+- Feat: RAM benchmark rewritten as a compiled C program (same pattern as CPU benchmark). Replaces `dd`/tmpfs with direct `memset` and `memcpy` on a 128 MB buffer, 3 seconds each. Eliminates kernel filesystem overhead and syscall-per-MB cost — measures actual memory subsystem bandwidth. Reports write (memset) and copy (memcpy) in MB/s, logged to history.
+
 ## v4.0 — 2026-05-23
 
 **Startup splash:**
