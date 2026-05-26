@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.2 — 2026-05-27
 
 **New features:**
 
