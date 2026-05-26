@@ -1239,17 +1239,48 @@ DTBCPUOC() {
     local HAS_NODE=0
     fdtget "$DTB" "$OPP_BASE/opp-1608000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
 
-    local STATE_MSG
-    if   [ $IS_ACTIVE -eq 1 ]; then
-        STATE_MSG="Status: 1608 MHz ACTIVE (kernel loaded)\n\n"
-    elif [ $HAS_NODE -eq 1 ]; then
-        STATE_MSG="Status: OPP node in DTB but NOT active yet\n(reboot pending or avs-scale not cleared)\n\n"
-    else
-        STATE_MSG="Status: not active — DTB patch required\n\n"
+    # ── Tune voltage (OPP node already exists) ───────────────────────────────
+    if [ $HAS_NODE -eq 1 ]; then
+        local CUR_UV; CUR_UV=$(fdtget -t u "$DTB" "$OPP_BASE/opp-1608000000" "$OPP_BIN_PROP" 2>/dev/null | awk '{print $1}')
+        local CUR_MV=$(( ${CUR_UV:-0} / 1000 ))
+        local CUR_FRAC=$(( ${CUR_UV:-0} % 1000 ))
+        local CUR_STR="${CUR_MV}"; [ "$CUR_FRAC" -eq 500 ] && CUR_STR="${CUR_MV}.5"
+        local STATUS_LINE; [ $IS_ACTIVE -eq 1 ] && STATUS_LINE="ACTIVE" || STATUS_LINE="pending reboot"
+        local -a VOLT_ITEMS=()
+        local v=1350000
+        while [ $v -ge 950000 ]; do
+            local mv=$(( v / 1000 )); local frac=$(( v % 1000 ))
+            local lbl="${mv} mV"; [ "$frac" -eq 500 ] && lbl="${mv}.5 mV"
+            VOLT_ITEMS+=("$v" "$lbl")
+            v=$(( v - 12500 ))
+        done
+        local VOLT_UV
+        VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — TUNE VOLTAGE ]" \
+            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\nSelect new voltage for 1608 MHz OPP.\nToo low = may not boot (safety service helps)." \
+            19 52 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
+        [ -z "$VOLT_UV" ] && return
+        local VOLT_MV=$(( VOLT_UV / 1000 ))
+        local VOLT_FRAC=$(( VOLT_UV % 1000 ))
+        local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
+        dialog --backtitle "$BACKTITLE" --title "[ CPU OC — CONFIRM ]" \
+            --yesno "1608 MHz: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 50 > "$CURR_TTY"
+        [ $? -ne 0 ] && return
+        fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" "$OPP_BIN_PROP" \
+            $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null
+        [ "$OPP_BIN_PROP" != "opp-microvolt" ] && \
+            fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" opp-microvolt \
+                $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null
+        sync; touch "$DTB_PENDING"; SetupDTBSafetyService
+        dialog --backtitle "$BACKTITLE" --title "✓ Voltage Updated" \
+            --yesno "1608 MHz: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 48 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+        return
     fi
 
+    # ── First apply (OPP node does not exist yet) ─────────────────────────────
+    local STATE_MSG="Status: not active — DTB patch required\n\n"
     local CPU_OC_BODY="Silicon quality varies — not all R36S units are equal.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup."
-    if [ "$OPP_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
+    if [ "$OPP_BIN_PROP" = "opp-microvolt" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
             --msgbox "${STATE_MSG}${CPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 58 > "$CURR_TTY"
         return
@@ -1353,17 +1384,46 @@ DTBGPUOC() {
     local HAS_NODE=0
     fdtget "$DTB" "$GPU_OPP/opp-600000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
 
-    local STATE_MSG
-    if   [ $IS_ACTIVE -eq 1 ]; then
-        STATE_MSG="Status: 600 MHz ACTIVE (kernel loaded)\n\n"
-    elif [ $HAS_NODE -eq 1 ]; then
-        STATE_MSG="Status: OPP node in DTB but NOT active yet\n(reboot pending)\n\n"
-    else
-        STATE_MSG="Status: not active — DTB patch required\n\n"
+    # ── Tune voltage (OPP node already exists) ───────────────────────────────
+    if [ $HAS_NODE -eq 1 ]; then
+        local CUR_UV; CUR_UV=$(fdtget -t u "$DTB" "$GPU_OPP/opp-600000000" "$GPU_BIN_PROP" 2>/dev/null | awk '{print $1}')
+        local CUR_MV=$(( ${CUR_UV:-0} / 1000 ))
+        local CUR_FRAC=$(( ${CUR_UV:-0} % 1000 ))
+        local CUR_STR="${CUR_MV}"; [ "$CUR_FRAC" -eq 500 ] && CUR_STR="${CUR_MV}.5"
+        local STATUS_LINE; [ $IS_ACTIVE -eq 1 ] && STATUS_LINE="ACTIVE" || STATUS_LINE="pending reboot"
+        local -a VOLT_ITEMS=()
+        local v=1150000
+        while [ $v -ge 950000 ]; do
+            local mv=$(( v / 1000 )); local frac=$(( v % 1000 ))
+            local lbl="${mv} mV"; [ "$frac" -eq 500 ] && lbl="${mv}.5 mV"
+            VOLT_ITEMS+=("$v" "$lbl")
+            v=$(( v - 12500 ))
+        done
+        local VOLT_UV
+        VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ GPU OC — TUNE VOLTAGE ]" \
+            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\nSelect new voltage for 600 MHz OPP.\nvdd_logic shared: too low = may not boot." \
+            19 52 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
+        [ -z "$VOLT_UV" ] && return
+        local VOLT_MV=$(( VOLT_UV / 1000 ))
+        local VOLT_FRAC=$(( VOLT_UV % 1000 ))
+        local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
+        dialog --backtitle "$BACKTITLE" --title "[ GPU OC — CONFIRM ]" \
+            --yesno "600 MHz: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 50 > "$CURR_TTY"
+        [ $? -ne 0 ] && return
+        fdtput -t u "$DTB" "$GPU_OPP/opp-600000000" "$GPU_BIN_PROP" $VOLT_UV 2>/dev/null
+        [ "$GPU_BIN_PROP" != "opp-microvolt" ] && \
+            fdtput -t u "$DTB" "$GPU_OPP/opp-600000000" opp-microvolt $VOLT_UV 2>/dev/null
+        sync; touch "$DTB_PENDING"; SetupDTBSafetyService
+        dialog --backtitle "$BACKTITLE" --title "✓ Voltage Updated" \
+            --yesno "600 MHz: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 48 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+        return
     fi
 
+    # ── First apply (OPP node does not exist yet) ─────────────────────────────
+    local STATE_MSG="Status: not active — DTB patch required\n\n"
     local GPU_OC_BODY="Mechanism: gpll/2 = 600 MHz exactly\n(no kernel recompile needed)\n\nvdd_logic is SHARED with SoC logic.\nVoltage margin is tight — use conservative\nvoltage, especially if also undervolting GPU.\n\nSafety service protects against boot hangs\nbut NOT against early kernel panics."
-    if [ "$GPU_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
+    if [ "$GPU_BIN_PROP" = "opp-microvolt" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ GPU OC — 600 MHz ]" \
             --msgbox "${STATE_MSG}${GPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 20 58 > "$CURR_TTY"
         return
@@ -1458,17 +1518,46 @@ DTBRAMOC() {
     local HAS_NODE=0
     fdtget "$DTB" "$DMC_OPP/opp-928000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
 
-    local STATE_MSG
-    if   [ $IS_ACTIVE -eq 1 ]; then
-        STATE_MSG="Status: 924 MHz ACTIVE (ATF-delivered, kernel loaded)\n\n"
-    elif [ $HAS_NODE -eq 1 ]; then
-        STATE_MSG="Status: OPP node in DTB but NOT active yet\n(reboot pending)\n\n"
-    else
-        STATE_MSG="Status: not active — DTB patch required\n\n"
+    # ── Tune voltage (OPP node already exists) ───────────────────────────────
+    if [ $HAS_NODE -eq 1 ]; then
+        local CUR_UV; CUR_UV=$(fdtget -t u "$DTB" "$DMC_OPP/opp-928000000" "$DMC_BIN_PROP" 2>/dev/null | awk '{print $1}')
+        local CUR_MV=$(( ${CUR_UV:-0} / 1000 ))
+        local CUR_FRAC=$(( ${CUR_UV:-0} % 1000 ))
+        local CUR_STR="${CUR_MV}"; [ "$CUR_FRAC" -eq 500 ] && CUR_STR="${CUR_MV}.5"
+        local STATUS_LINE; [ $IS_ACTIVE -eq 1 ] && STATUS_LINE="ACTIVE" || STATUS_LINE="pending reboot"
+        local -a VOLT_ITEMS=()
+        local v=1150000
+        while [ $v -ge 950000 ]; do
+            local mv=$(( v / 1000 )); local frac=$(( v % 1000 ))
+            local lbl="${mv} mV"; [ "$frac" -eq 500 ] && lbl="${mv}.5 mV"
+            VOLT_ITEMS+=("$v" "$lbl")
+            v=$(( v - 12500 ))
+        done
+        local VOLT_UV
+        VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — TUNE VOLTAGE ]" \
+            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\nSelect new voltage for 928 MHz OPP.\nvdd_logic shared: too low = may not boot." \
+            19 52 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
+        [ -z "$VOLT_UV" ] && return
+        local VOLT_MV=$(( VOLT_UV / 1000 ))
+        local VOLT_FRAC=$(( VOLT_UV % 1000 ))
+        local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
+        dialog --backtitle "$BACKTITLE" --title "[ RAM OC — CONFIRM ]" \
+            --yesno "928 MHz: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 50 > "$CURR_TTY"
+        [ $? -ne 0 ] && return
+        fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" "$DMC_BIN_PROP" $VOLT_UV 2>/dev/null
+        [ "$DMC_BIN_PROP" != "opp-microvolt" ] && \
+            fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-microvolt $VOLT_UV 2>/dev/null
+        sync; touch "$DTB_PENDING"; SetupDTBSafetyService
+        dialog --backtitle "$BACKTITLE" --title "✓ Voltage Updated" \
+            --yesno "928 MHz: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 48 > "$CURR_TTY"
+        [ $? -eq 0 ] && reboot
+        return
     fi
 
+    # ── First apply (OPP node does not exist yet) ─────────────────────────────
+    local STATE_MSG="Status: not active — DTB patch required\n\n"
     local DMC_OC_BODY="ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for RAM OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change."
-    if [ "$DMC_BIN_PROP" = "opp-microvolt" ] && [ $IS_ACTIVE -eq 0 ]; then
+    if [ "$DMC_BIN_PROP" = "opp-microvolt" ]; then
         dialog --backtitle "$BACKTITLE" --title "[ RAM OC — 928 MHz ]" \
             --msgbox "${STATE_MSG}${DMC_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 60 > "$CURR_TTY"
         return
@@ -1593,7 +1682,7 @@ MonitorMenu() {
 # ── Benchmark ─────────────────────────────────────────────────────────────────
 
 BenchmarkCPU() {
-    local CPU_BENCH=/tmp/r36_cpubench_30s
+    local CPU_BENCH=/tmp/r36_cpubench_30s_o1
 
     # Compile benchmark on first use
     if [ ! -x "$CPU_BENCH" ] && ! command -v gcc >/dev/null 2>&1; then
@@ -1606,22 +1695,29 @@ BenchmarkCPU() {
         cat > /tmp/r36_cpubench_30s.c << 'CSRC'
 #include <stdio.h>
 #include <time.h>
+#include <stdint.h>
 int main() {
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    volatile unsigned int x = 1;
+    uint32_t a=1, b=2, c=3, d=4;
     long long iters = 0;
+    int i;
     do {
-        for (int i = 0; i < 10000000; i++)
-            x = x * 1664525u + 1013904223u;
-        iters += 10000000;
+        for (i = 0; i < 10000000; i++) {
+            a = a * 1664525u + 1013904223u;
+            b = b * 1664525u + 1013904223u;
+            c = c * 1664525u + 1013904223u;
+            d = d * 1664525u + 1013904223u;
+        }
+        iters += 40000000;
         clock_gettime(CLOCK_MONOTONIC, &t1);
     } while ((t1.tv_sec - t0.tv_sec) < 30);
+    if (a ^ b ^ c ^ d == 0) iters++;
     printf("%lld\n", iters);
     return 0;
 }
 CSRC
-        gcc -O2 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
+        gcc -O1 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
@@ -1681,9 +1777,14 @@ CSRC
 
     echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
+    local OC_NOTE="" DLG_H=10
+    [ "${MHZ:-0}" -ge 1600 ] 2>/dev/null && \
+        OC_NOTE="\n\n1512/1608 MHz scores may be similar (ALU ceiling).\nIn-game benefit varies by workload." && \
+        DLG_H=13
+
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
-        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP_DISP}\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}" \
-        10 58 > "$CURR_TTY"
+        --msgbox "Config: ${MHZ} MHz  vdd_arm: ${MV} mV  gov: ${GOV}\nTemp: ${TEMP_DISP}\n\nALU (int32) : ${SCORE_DISP}\n${REL_DISP}${OC_NOTE}" \
+        "$DLG_H" 58 > "$CURR_TTY"
 }
 
 BenchmarkRAM() {

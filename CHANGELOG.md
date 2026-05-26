@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+**New features:**
+
+- Feat: CPU OC, GPU OC and RAM OC menus now detect whether the OPP node already exists in the DTB. If it does (OC was previously applied), the menu skips the info and setup screens and goes directly to a voltage selector showing the current voltage. This allows tuning the OC voltage at any time without re-reading the setup documentation. Applies to all three OC paths: CPU 1608 MHz, GPU 600 MHz, RAM 928 MHz.
+- Feat: CPU benchmark result now shows a note when running at 1608 MHz explaining that scores at 1512 and 1608 MHz may be similar due to ALU pipeline ceiling, and that real benefit varies by workload (emulation).
+
+**Research findings (no script changes):**
+
+- Research: Seven synthetic benchmarks run to measure CPU 1512 MHz vs 1608 MHz performance difference: LCG 4-chain ALU, Coremark 1.0, Coremark + RAM OC (786 vs 924 MHz DMC), EMU branch random, EMU branch pattern, L1 pointer chasing (16 KB), and guest sim. None reliably measured the difference. LCG hits an ALU pipeline throughput ceiling at 1512 MHz. Coremark hits an L2 cache latency ceiling (latency is fixed in nanoseconds, not clock cycles — RAM OC confirmed to have 0% effect on Coremark). L1 pointer chasing showed +1.8% at 1608 vs 1512 MHz (theoretical maximum: +6.3%). Conclusion: the A35 in-order pipeline hits a ceiling before 1608 MHz on every synthetic workload tested. The CPU OC benefit is real but only observable in actual emulation (JIT recompilation, multi-thread frame timing) — not measurable with single-thread benchmarks.
+- Research: DMC OC 928 MHz voltage sweep (opp-microvolt-L2, L2 bin, 128 MB memset+memcpy stress 30 s pinned at 924 MHz). Floor confirmed at **987.5 mV** (−87.5 mV vs conservative starting point of 1075 mV). 975 mV boots but crashes under full RAM stress. vdd_logic rail is shared between GPU and DMC — with GPU OC at 1025 mV and DMC OC at 987.5 mV, the rail is set by the GPU (1025 mV wins). Results are chip-specific (L2 bin, leakage=13).
+
 ## v4.1 — 2026-05-23
 
 **Fixes and improvements:**
