@@ -2073,7 +2073,7 @@ BenchmarkClearHistory() {
     local COUNT=0
     [ -f "$SCORES_FILE" ] && COUNT=$(wc -l < "$SCORES_FILE" 2>/dev/null || echo 0)
     dialog --backtitle "$BACKTITLE" --title "[ CLEAR HISTORY ]" \
-        --yesno "Delete score history and baseline?\n\n${COUNT} entries in log\nBaseline: $(cat "$BASELINE_FILE" 2>/dev/null || echo "none") Mops/10s\n\nThis cannot be undone." 10 48 > "$CURR_TTY"
+        --yesno "Delete score history and baseline?\n\n${COUNT} entries in log\nBaseline: $(cat "$BASELINE_FILE" 2>/dev/null || echo "none") Mops/30s\n\nThis cannot be undone." 10 48 > "$CURR_TTY"
     [ $? -ne 0 ] && return
     rm -f "$SCORES_FILE" "$BASELINE_FILE"
     dialog --backtitle "$BACKTITLE" --title "✓ History Cleared" \
@@ -2082,29 +2082,36 @@ BenchmarkClearHistory() {
 
 StressTestCPU() {
     local SILENT="${1:-0}"
-    local CPU_BENCH=/tmp/r36_cpubench
+    local CPU_BENCH=/tmp/r36_cpubench_30s_o1
 
     # Compile C benchmark if not ready (same source as BenchmarkCPU)
     if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
-        cat > /tmp/r36_cpubench.c << 'CSRC'
+        cat > /tmp/r36_cpubench_30s.c << 'CSRC'
 #include <stdio.h>
 #include <time.h>
+#include <stdint.h>
 int main() {
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
-    volatile unsigned int x = 1;
+    uint32_t a=1, b=2, c=3, d=4;
     long long iters = 0;
+    int i;
     do {
-        for (int i = 0; i < 10000000; i++)
-            x = x * 1664525u + 1013904223u;
-        iters += 10000000;
+        for (i = 0; i < 10000000; i++) {
+            a = a * 1664525u + 1013904223u;
+            b = b * 1664525u + 1013904223u;
+            c = c * 1664525u + 1013904223u;
+            d = d * 1664525u + 1013904223u;
+        }
+        iters += 40000000;
         clock_gettime(CLOCK_MONOTONIC, &t1);
-    } while ((t1.tv_sec - t0.tv_sec) < 10);
+    } while ((t1.tv_sec - t0.tv_sec) < 30);
+    if (a ^ b ^ c ^ d == 0) iters++;
     printf("%lld\n", iters);
     return 0;
 }
 CSRC
-        gcc -O2 -o "$CPU_BENCH" /tmp/r36_cpubench.c 2>/dev/null
+        gcc -O1 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
     fi
 
     # Need at least one stress source
@@ -2345,7 +2352,7 @@ ExitMenu() {
     printf "\e[?25h" > "$CURR_TTY"
     pkill -9 -f gptokeyb || true
     if [[ ! -e "/dev/input/by-path/platform-odroidgo2-joypad-event-joystick" ]]; then
-        setfont /usr/share/consolefonts/Lat7-Terminus20x10.psf.gz
+        setfont /usr/share/consolefonts/Lat7-TerminusBold20x10.psf.gz
     fi
     exit 0
 }
