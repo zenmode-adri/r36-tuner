@@ -101,7 +101,7 @@ The GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` exactly. No GPU rat
 
 For the full voltage sweep table and analysis see [docs/opp-research.md](docs/opp-research.md).
 
-> `vdd_logic` is shared between GPU and all SoC logic. Start at 1150 mV and reduce cautiously. If the kernel crashes before `basic.target`, manual SD card recovery is required.
+> `vdd_logic` is shared between GPU and DMC (RAM controller). See [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage) for how to tune both correctly.
 
 ## CPU OC — 1608 MHz
 
@@ -121,7 +121,7 @@ ATF (ARM Trusted Firmware) v0x105 controls DDR frequency switching via SMC calls
 
 **Confirmed working on this device:** ATF v0x105 accepts 928 MHz and delivers **924 MHz** (nearest PLL divisor). Verified stable — system survives sustained GPU + DMC load at 924 MHz.
 
-**Voltage:** 1075 mV for L2 bin (conservative). `vdd_logic` is shared with GPU — when GPU OC is active at 1150 mV, there is zero extra voltage cost for DMC OC.
+**Voltage:** confirmed stable floor for L2 bin: **987.5 mV** (−87.5 mV vs conservative starting point of 1075 mV). `vdd_logic` is shared with GPU — see [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage) below.
 
 **DTB change required:**
 
@@ -150,6 +150,30 @@ GPU terrain fps shows no change (18 fps at all DMC freqs) because Mali-G31 at 60
 > **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
 
 **924 MHz is not just the stability limit — it is the performance optimum.** Frequencies above 928 MHz were tested: 996 MHz is stable but *slower* (1012 MB/s), 1056 MHz causes kernel panic under load. ATF's timing tables for 924 MHz are better calibrated than for higher frequencies; going higher yields worse bandwidth. Full analysis in [docs/opp-research.md](docs/opp-research.md).
+
+## vdd_logic Shared Rail — GPU & RAM OC Voltage
+
+The GPU and DMC (RAM controller) share the same power rail: `vdd_logic`. The PMIC always sets the rail to the **highest voltage demanded by any consumer** — there is no independent supply for each.
+
+This means:
+- If GPU OC is at 1025 mV and DMC OC is at 987.5 mV → rail = **1025 mV** (GPU wins).
+- To lower the effective rail, **both** must be undervolted below the target.
+- Undervolting only one has no effect on the other's stability — but has no rail benefit either if the other is higher.
+
+**Confirmed stable floors (L2 bin):**
+
+| Component | OC freq | Voltage floor | Rail contribution |
+|-----------|---------|--------------|-------------------|
+| GPU | 600 MHz | **1025 mV** | sets the rail |
+| DMC | 924 MHz | **987.5 mV** | covered by GPU |
+
+With both OCs active, `vdd_logic` = 1025 mV. If you undervolt GPU below 987.5 mV, DMC becomes the new rail floor.
+
+### Tuning OC voltage after first apply
+
+Once OC is active, you do not need to re-apply from scratch to change the voltage. Enter the **CPU OC / GPU OC / RAM OC** menu — the tuner detects the existing OPP node and goes directly to a voltage selector showing the current value. Select a new voltage, confirm, and reboot.
+
+The DTB safety service protects against bad values: if the device fails to boot after a voltage change, the original DTB is automatically restored before userspace starts.
 
 ## Performance Comparison — Full OC+UV vs Stock
 
