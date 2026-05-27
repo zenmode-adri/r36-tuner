@@ -1,10 +1,10 @@
 #!/bin/bash
-# R36 Tuner v4.1 — CPU / GPU / RAM / Voltage tuning for R36S (RK3326)
+# R36 Tuner v4.2 — CPU / GPU / RAM / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
-VERSION="4.1"
+VERSION="4.2"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
@@ -86,6 +86,15 @@ DetectOPPBinProp() {
         bin=$(dmesg 2>/dev/null \
             | grep "cpu cpu0.*opp-binning.*using OPP prop name" | tail -1 | grep -o 'L[0-9]')
     if [ -n "$bin" ]; then
+        echo "$bin" > "$BIN_CACHE_FILE" 2>/dev/null
+        echo "opp-microvolt-${bin}"; return
+    fi
+    # Fallback: newer kernels log pvtm-volt-sel=N instead of opp-binning line
+    # pvtm-volt-sel maps directly to bin level (sel=2 → L2)
+    local sel
+    sel=$(dmesg 2>/dev/null | grep -o 'pvtm-volt-sel=[0-9]' | tail -1 | grep -o '[0-9]$')
+    if [ -n "$sel" ]; then
+        bin="L${sel}"
         echo "$bin" > "$BIN_CACHE_FILE" 2>/dev/null
         echo "opp-microvolt-${bin}"; return
     fi
