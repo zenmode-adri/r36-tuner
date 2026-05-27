@@ -4,27 +4,25 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 
 ## Features
 
-- CPU max / min frequency selection
-- CPU governor selector (performance / schedutil / ondemand / conservative / powersave)
+- CPU max / min frequency and governor selection
 - GPU max frequency selection
 - DMC / RAM max frequency selection
-- **DTB undervolt** — permanent voltage reduction via OPP table patch in the Device Tree Binary. The DTB contains multiple voltage tables (bins L0–L3): the kernel measures chip leakage at boot (PVTM) and selects the appropriate bin for your unit. The tuner reads dmesg to detect which bin is active and patches only that table. Uniform mode (−200 mV to +50 mV in 12.5 mV steps) or fine-tune per OPP. Reboot required.
-- **CPU OC to 1608 MHz** — unlocks 1608 MHz by patching `rockchip,avs-scale` in the DTB (no kernel recompile needed). The PX30/RK3326 clock driver already contains 1608 MHz; it was being suppressed by the AVS mechanism at runtime.
-- **GPU OC to 600 MHz** — adds a 600 MHz OPP to the GPU OPP table in the DTB. The GPU composite clock uses GPLL/2 = 600 MHz exactly; no clock driver changes needed.
-- **RAM OC to 928 MHz** — adds a 928 MHz OPP to the DMC OPP table. ATF v0x105 supports the frequency and delivers 924 MHz (nearest PLL divisor). +11% read bandwidth over stock 786 MHz (measured, CPU pinned, 5-run average).
-- **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
+- **DTB undervolt** — permanent voltage reduction via OPP table patch. Detects your chip bin (L0–L3) automatically and patches only the correct voltage table. Uniform mode or per-OPP fine-tune.
+- **CPU OC to 1608 MHz** — unlocks 1608 MHz via DTB patch (no kernel recompile).
+- **GPU OC to 600 MHz** — adds 600 MHz OPP via DTB patch.
+- **RAM OC to 928 MHz** — adds 928 MHz OPP via DTB patch. ATF delivers 924 MHz (nearest PLL divisor).
+- **DTB safety net** — early-boot systemd service detects if the previous boot hung after a DTB patch and restores the original backup before userspace starts.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
 - Benchmarks: CPU (ALU int32 chains), RAM (128 MB memset/memcpy, compiled C), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
 - Save profile → applies at every boot via systemd service
 - Fail-safe: panic flag detects boot hangs and auto-disables the profile
-- Startup warning if last boot profile caused a hang or if DTB was auto-restored
 
 ## Requirements
 
 - Device: R36S or compatible clone (RK3326 / RK3326S SoC)
 - OS: [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) by southoz
 - Tools present in dArkOSRE: `dialog`, `gptokeyb`, `systemd`
-- For DTB undervolt: `device-tree-compiler` (`fdtget`/`fdtput`) — the script offers to install it automatically
+- For DTB features: `device-tree-compiler` (`fdtget`/`fdtput`) — the script offers to install it automatically
 
 ## Installation
 
@@ -41,216 +39,119 @@ Then launch it from the dArkOSRE system menu.
 
 The RK3326 OPP framework owns all voltage regulators — runtime sysfs writes are reverted during frequency transitions. The only permanent undervolt is patching the voltage table in the Device Tree Binary.
 
-This device uses Rockchip OPP binning (`pvtm-volt-sel`). At boot, the kernel selects a voltage bin based on chip leakage measurement. Most R36S units land on **L2**. The tuner detects the active bin from `dmesg` and patches the correct property (`opp-microvolt-L2`).
+The tuner detects your chip bin from `dmesg` (`pvtm-volt-sel`) and patches the correct property (`opp-microvolt-L2` for most units). Reboot required.
 
-Tested results on L2 bin (your bin may differ — check dmesg):
+**Tested results (L2 bin — most R36S units):**
 
-| Component | Stock L2 @ max freq | Stable limit |
-|-----------|---------------------|--------------|
+| Component | Stock @ max freq | Stable UV limit |
+|-----------|-----------------|-----------------|
 | CPU (vdd_arm) | 1300 mV @ 1512 MHz | **−125 mV → 1175 mV** ✅ |
-| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV uniform / up to −150 mV fine-tune** (520 MHz → 950 mV, 480 MHz → 962.5 mV) ✅ |
-| RAM/DMC (vdd_logic) | — | not recommended ⚠️ (shares vdd_logic; see [RAM OC](#ram-oc--928-mhz)) |
+| GPU (vdd_logic) | 1100 mV @ 520 MHz | **−12.5 mV uniform** (or up to −150 mV fine-tune per OPP) ✅ |
+| RAM/DMC (vdd_logic) | — | use RAM OC menu ⚠️ (shares vdd_logic with GPU) |
 
-Full test sweep data in [docs/opp-research.md](docs/opp-research.md).
-
-### CPU voltage table — all bins (mV)
-
-Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · Rail: `vdd_arm` · **Bold = our tested bin (L2)**
-
-| MHz  | default | L0   | L1   | **L2** | L3   |
-|------|---------|------|------|--------|------|
-| 1008 | 1175    | 1175 | 1125 | **1125** | 1050 |
-| 1200 | 1300    | 1300 | 1275 | **1250** | 1200 |
-| 1248 | 1350    | 1350 | 1300 | **1275** | 1225 |
-| 1296 | 1350    | 1350 | 1350 | **1300** | 1250 |
-| 1512 | 1350    | 1350 | 1350 | **1300** | 1250 |
-
-### GPU voltage table — all bins (mV)
-
-Source: official [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) DTB · Rail: `vdd_logic` (shared with SoC logic) · **Bold = our tested bin (L2)**
-
-| MHz | default | L0   | L1   | **L2**  | L3   |
-|-----|---------|------|------|---------|------|
-| 400 | 1050    | 1050 | 1025 | **975** | 950  |
-| 480 | 1125    | 1125 | 1100 | **1050** | 1000 |
-| 520 | 1150    | 1150 | 1150 | **1100** | 1050 |
-
-### DMC (RAM controller) voltage table — all bins (mV)
-
-Rail: `vdd_logic` (shared with GPU and SoC logic) · Node: `/dmc-opp-table` · **Bold = tested unit (L2)**
-
-| MHz | L0   | L1   | **L2**   | L3   |
-|-----|------|------|----------|------|
-| 528 | 975  | 975  | **950**  | 950  |
-| 666 | 1050 | 1000 | **975**  | 950  |
-| 786 | 1100 | 1050 | **1025** | 1000 |
-
-> DMC shares `vdd_logic` with the GPU — the PMIC always sets the rail to the highest voltage demanded by any consumer. Patching DMC voltages lower has marginal effect and risks DDR instability (random crashes, data corruption).
->
-> RAM OC via DTB **is possible** — see [RAM OC — 928 MHz](#ram-oc--928-mhz).
-
-For full research notes and benchmark data, see [docs/opp-research.md](docs/opp-research.md).
+> Your bin may differ — the tuner shows your active bin on startup. Full voltage tables in [docs/opp-research.md](docs/opp-research.md).
 
 ## GPU OC — 600 MHz
 
-The GPU composite clock uses `gpll (1200 MHz) / 2 = 600 MHz` exactly. No GPU rate table exists in the driver — the only limit was the OPP table. Adding a `opp-600000000` node is sufficient.
+Adds a `opp-600000000` node to the GPU OPP table in the DTB. The GPU clock uses `gpll / 2 = 600 MHz` exactly — no clock driver changes needed.
 
-**Voltage:** start at 1150 mV (PMIC hard limit for `vdd_logic`) and reduce in 12.5 mV steps. Confirmed stable floor for L2 bin: **1025 mV (−125 mV)**. Artifacts at 1012.5 mV. Silicon lottery — your chip may differ.
+**Results (L2 bin):** 520 MHz → 600 MHz = **+20% GPU compute** (terrain benchmark). Confirmed stable floor: **1025 mV** (−125 mV from initial OC voltage of 1150 mV).
 
-**Result (L2 bin, off-screen terrain):** 520 MHz @ 1087.5 mV → 15 fps · 600 MHz @ 1025 mV → **18 fps (+20%)** at 47°C.
+> `vdd_logic` is shared between GPU and DMC. See [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage).
 
-For the full voltage sweep table and analysis see [docs/opp-research.md](docs/opp-research.md).
-
-> `vdd_logic` is shared between GPU and DMC (RAM controller). See [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage) for how to tune both correctly.
+For full voltage sweep and clock analysis see [docs/opp-research.md](docs/opp-research.md).
 
 ## CPU OC — 1608 MHz
 
-The RK3326 clock driver already contains 1608 MHz in `px30_cpuclk_rates` and `px30_pll_rates`. It was suppressed at runtime by `rockchip,avs-scale=4` in the DTB, which caused the kernel to actively strip OPPs above 1512 MHz from the table during boot.
+Unlocks 1608 MHz by patching `rockchip,avs-scale` from `4` to `0` in the DTB and adding an `opp-1608000000` node. The clock driver already contains 1608 MHz — it was being suppressed at boot.
 
-**Fix (DTB only, no kernel recompile):**
-1. Add `opp-1608000000` node to `/cpu0-opp-table` with desired voltage.
-2. Set `rockchip,avs-scale` from `4` to `0` — disables the AVS OPP stripping.
+**Confirmed voltage (L2 bin): 1187.5 mV.** Seven synthetic benchmarks showed 0–2% difference vs 1512 MHz — the A35 pipeline hits throughput and latency ceilings before 1608 MHz on single-thread workloads. Real benefit is in emulation: JIT recompilation and multi-thread frame timing. The bigger single win is undervolting 1512 MHz to 1175 mV.
 
-Seven synthetic benchmarks (ALU chains, Coremark, L1/L2 pointer chasing, and others) showed **0–2% difference** between 1512 and 1608 MHz. The A35 in-order pipeline hits ceilings before 1608 MHz on every single-thread workload: ALU throughput saturates at 1512 MHz, Coremark is L2-latency-bound (latency is fixed in nanoseconds, not clock cycles — RAM OC has zero effect on it). The CPU OC benefit is real but only observable in actual emulation: JIT recompilation, multi-thread frame timing, guest code fetch from RAM. The bigger win is undervolting: running 1512 MHz at 1175 mV rather than 1300 mV reduces heat with no performance cost. GPU-bound workloads show no difference at any CPU frequency. Full benchmark table in [docs/opp-research.md](docs/opp-research.md).
-
-A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
+For full benchmark breakdown see [docs/opp-research.md](docs/opp-research.md).
 
 ## RAM OC — 928 MHz
 
-ATF (ARM Trusted Firmware) v0x105 controls DDR frequency switching via SMC calls, but the kernel DMC devfreq driver determines *which frequencies to expose* from the DTB OPP table. Adding an OPP node to `/dmc-opp-table` causes the kernel to request that frequency from ATF, which executes the switch if it has timing support for it.
+Adds a `opp-928000000` node to the DMC OPP table. ATF v0x105 accepts 928 MHz and delivers **924 MHz** (nearest PLL divisor). The `dmc_ondemand` governor scales up to 924 MHz under memory pressure.
 
-**Confirmed working on this device:** ATF v0x105 accepts 928 MHz and delivers **924 MHz** (nearest PLL divisor). Verified stable — system survives sustained GPU + DMC load at 924 MHz.
-
-**Voltage:** confirmed stable floor for L2 bin: **987.5 mV** (−87.5 mV vs conservative starting point of 1075 mV). `vdd_logic` is shared with GPU — see [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage) below.
-
-**DTB change required:**
-
-```bash
-fdtput -c  /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-hz 0 928000000
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 987500
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 987500
-```
-
-After reboot, `available_frequencies` shows `528000000 666000000 786000000 928000000`. The `dmc_ondemand` governor scales up to 924 MHz under memory pressure.
-
-**Benchmark results (128 MB memset + memcpy, compiled C, CPU pinned to 1512 MHz, L2 bin):**
+**Results (L2 bin):**
 
 | DMC freq | Write MB/s | Copy MB/s |
 |----------|-----------|-----------|
-| 528 MHz | 3178 | 1176 |
-| 666 MHz | 4044 | 1184 |
-| 786 MHz (stock max) | 4768 | 1300 |
+| 786 MHz (stock) | 4768 | 1300 |
 | **924 MHz (OC)** | **5516** | **1597** |
 
-vs stock 786 MHz: write **+15.7%**, copy **+22.8%**. Write scales nearly linearly with frequency (pure bus throughput). Copy scales less (read+write share the bus, saturates sooner).
+vs stock: write **+15.7%**, copy **+22.8%**. Confirmed stable voltage floor: **987.5 mV**.
 
-GPU terrain fps shows no change (18 fps at all DMC freqs) because Mali-G31 at 600 MHz is compute-bound, not bandwidth-bound. Benefits are real in mixed CPU+GPU workloads: emulator JIT, texture streaming, ROM loading, save states.
+> `vdd_logic` is shared with GPU — see [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage).
 
-> **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
-
-Full analysis in [docs/opp-research.md](docs/opp-research.md).
+For full ATF/DMC mechanism and bandwidth sweep see [docs/opp-research.md](docs/opp-research.md).
 
 ## vdd_logic Shared Rail — GPU & RAM OC Voltage
 
-The GPU and DMC (RAM controller) share the same power rail: `vdd_logic`. The PMIC always sets the rail to the **highest voltage demanded by any consumer** — there is no independent supply for each.
+The GPU and DMC share the `vdd_logic` rail. The PMIC always sets it to the **highest voltage demanded by any consumer**.
 
-This means:
-- If GPU OC is at 1025 mV and DMC OC is at 987.5 mV → rail = **1025 mV** (GPU wins).
-- To lower the effective rail, **both** must be undervolted below the target.
-- Undervolting only one has no effect on the other's stability — but has no rail benefit either if the other is higher.
+- GPU OC at 1025 mV + DMC OC at 987.5 mV → rail = **1025 mV** (GPU wins)
+- To lower the effective rail, **both** must be undervolted below the target
+- Undervolting only one has no rail benefit if the other is higher
 
-**Confirmed stable floors (L2 bin):**
+**Confirmed floors (L2 bin):**
 
-| Component | OC freq | Voltage floor | Rail contribution |
-|-----------|---------|--------------|-------------------|
-| GPU | 600 MHz | **1025 mV** | sets the rail |
-| DMC | 924 MHz | **987.5 mV** | covered by GPU |
-
-With both OCs active, `vdd_logic` = 1025 mV. If you undervolt GPU below 987.5 mV, DMC becomes the new rail floor.
+| Component | OC freq | Voltage floor |
+|-----------|---------|--------------|
+| GPU | 600 MHz | **1025 mV** |
+| DMC | 924 MHz | **987.5 mV** |
 
 ### Tuning OC voltage after first apply
 
-Once OC is active, you do not need to re-apply from scratch to change the voltage. Enter the **CPU OC / GPU OC / RAM OC** menu — the tuner detects the existing OPP node and goes directly to a voltage selector showing the current value. Select a new voltage, confirm, and reboot.
-
-The DTB safety service protects against bad values: if the device fails to boot after a voltage change, the original DTB is automatically restored before userspace starts.
+Enter the **GPU OC / RAM OC** menu at any time — the tuner detects the existing OPP node and goes directly to a voltage selector. Select a new voltage, confirm, reboot. The DTB safety service protects against bad values.
 
 ## Performance Comparison — Full OC+UV vs Stock
 
-Measured on the same unit (L2 bin, leakage=13), **without thermal pad** (real-world condition for most R36S owners). Both runs use identical settings: glmark2-es2-drm 2021.02, off-screen 320×240, same 20 scenes.
+Measured on the same unit (L2 bin), **without thermal pad**. glmark2-es2-drm 2021.02, off-screen 320×240.
 
 | Configuration | GPU | CPU | DMC | vdd_arm | vdd_logic |
 |---|---|---|---|---|---|
-| **Stock** | 520 MHz | 1512 MHz | 786 MHz | ~1200 mV | 975 mV |
+| **Stock** | 520 MHz | 1512 MHz | 786 MHz | ~1200 mV | ~1100 mV |
 | **OC + UV** | 600 MHz | 1608 MHz | 924 MHz | 1187.5 mV | 1025 mV |
 
-### Scene-by-scene results
-
-| Scene | Stock fps | OC+UV fps | Delta |
+| Scene | Stock | OC+UV | Delta |
 |---|---|---|---|
-| [build] use-vbo=false | 505 | 564 | **+11.7%** |
-| [build] use-vbo=true | 681 | 801 | **+17.6%** |
-| [texture] nearest | 1247 | 1294 | +3.8% |
-| [texture] linear | 1186 | 1317 | **+11.0%** |
-| [texture] mipmap | 1240 | 1389 | **+12.0%** |
-| [shading] gouraud | 474 | 530 | +11.8% |
-| [shading] blinn-phong | 437 | 500 | **+14.4%** |
-| [shading] phong | 356 | 397 | +11.5% |
-| [shading] cel | 319 | 359 | +12.5% |
-| [bump] high-poly | 191 | 224 | **+17.3%** |
-| [bump] normals | 1043 | 1119 | +7.3% |
-| [effect2d] laplacian | 498 | 558 | +12.0% |
-| [effect2d] box-5x5 | 198 | 227 | +14.6% |
-| [pulsar] | 1068 | 1142 | +6.9% |
-| [desktop] blur | 209 | 229 | +9.6% |
-| [desktop] shadow | 461 | 475 | +3.0% |
-| [buffer] map | 72 | 80 | +11.1% |
-| [buffer] subdata | 72 | 79 | +9.7% |
-| [buffer] interleaved | 89 | 97 | +9.0% |
-| [ideas] | 152 | 156 | +2.6% |
-| **terrain** (separate test) | **15 fps** | **18 fps** | **+20.0%** |
+| build vbo=false | 505 | 564 | **+11.7%** |
+| build vbo=true | 681 | 801 | **+17.6%** |
+| texture linear | 1186 | 1317 | **+11.0%** |
+| texture mipmap | 1240 | 1389 | **+12.0%** |
+| shading blinn-phong | 437 | 500 | **+14.4%** |
+| bump high-poly | 191 | 224 | **+17.3%** |
+| effect2d box-5x5 | 198 | 227 | +14.6% |
+| **terrain** | **15 fps** | **18 fps** | **+20.0%** |
+| *average (20 scenes)* | — | — | **~+10%** |
 
-**Overall: ~+10% across general workloads, +20% GPU compute (terrain).**
+**Thermal:** peak temp identical to stock (72°C) despite +15% GPU clock. UV offsets the extra heat.
 
-### Thermal results
-
-| | Stock | OC+UV | Delta |
-|---|---|---|---|
-| Initial temp | 54°C | 54°C | 0°C |
-| Average temp | 64°C | 65°C | **+1°C** |
-| Peak temp | 72°C | 72°C | **0°C** |
-
-The CPU undervolt (−112.5 mV) and GPU undervolt (−125 mV from the original 1150 mV) offset the extra heat from the higher clocks. Peak temperature is identical to stock despite running GPU at +15% and CPU at +6% higher frequency.
-
-> Results represent one chip (L2 bin). Silicon lottery applies — your unit may tolerate more or less undervolt.
+> Results represent one chip (L2 bin). Silicon lottery applies.
 
 ## Emergency Recovery — Device Won't Boot
 
-If a DTB undervolt is too aggressive, the kernel may fail to boot entirely. The automatic safety service cannot help in this case (it runs in userspace). To recover manually:
+If a DTB patch causes a boot failure the safety service cannot catch:
 
-1. **Power off** the R36S.
-2. **Remove the system SD card** (the one with dArkOSRE — typically the internal/main slot).
-3. **Plug the SD card into a PC** using a card reader.
-4. On Windows, look for a **FAT32 partition** — that is `/boot`. Open it.
-   - If Windows only shows one partition, use [DiskGenius](https://www.diskgenius.com/) (free) to browse all partitions on the card.
-5. Inside the boot partition, you will find:
-   - `rk3326-r36s-linux.dtb` — the patched file (bad)
-   - `rk3326-r36s-linux.dtb.bak` — the original backup (good)
-6. **Copy `rk3326-r36s-linux.dtb.bak` over `rk3326-r36s-linux.dtb`** (overwrite).
-7. Also **delete `.r36_dtb_patch_booting`** if it exists in that partition (cleans up the safety flag).
-8. **Eject** the SD card safely, reinsert into the R36S, and boot.
+1. Power off the R36S
+2. Remove the system SD card and plug into a PC
+3. On Windows, open the **FAT32 partition** (`/boot`). If not visible, use [DiskGenius](https://www.diskgenius.com/) (free)
+4. Copy `rk3326-r36s-linux.dtb.bak` over `rk3326-r36s-linux.dtb`
+5. Delete `.r36_dtb_patch_booting` if it exists
+6. Eject, reinsert, boot
 
-> The `.bak` file is created at the moment of patching and always reflects the state before the first patch. It is never overwritten by subsequent patch operations.
+> The `.bak` file is created at the moment of first patching and never overwritten.
 
 ## Disclaimer
 
 > **USE AT YOUR OWN RISK.**
 >
-> This tool writes directly to kernel sysfs interfaces and patches the Device Tree Binary to modify CPU, GPU, RAM frequencies and voltages. Incorrect settings — especially voltage undervolting — can cause **system instability, data corruption, or permanent hardware damage**.
+> This tool patches the Device Tree Binary and writes to kernel sysfs interfaces to modify CPU, GPU, and RAM frequencies and voltages. Incorrect settings can cause **system instability, data corruption, or permanent hardware damage**.
 >
-> The authors take **no responsibility** for bricked devices, corrupted SD cards, data loss, or any other damage resulting from the use of this software. The fail-safe mechanisms reduce risk but do not eliminate it.
+> The authors take **no responsibility** for bricked devices, corrupted SD cards, or data loss. The fail-safe mechanisms reduce risk but do not eliminate it.
 >
-> Always start with conservative values (−25 mV CPU, −12.5 mV GPU) and verify stability before going further.
+> Always start conservative (−25 mV CPU, −12.5 mV GPU) and verify stability before going further.
 
 ## Credits
 
