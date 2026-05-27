@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.3 — 2026-05-27
+
+**Bug fix:**
+
+- Fix: Bin detection now falls back to `pvtm-volt-sel=N` dmesg pattern for newer dArkOSRE kernels (04262026 and later) that no longer emit the `opp-binning: using OPP prop name` log line. Both detection paths write to the bin cache — works correctly on all kernel versions. Thanks to u/skyrent for the bug report.
+
 ## v4.2 — 2026-05-27
 
 **New features:**
