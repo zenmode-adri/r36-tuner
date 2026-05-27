@@ -22,7 +22,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - Device: R36S or compatible clone (RK3326 / RK3326S SoC)
 - OS: [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) by southoz
 - Tools present in dArkOSRE: `dialog`, `gptokeyb`, `systemd`
-- For DTB features: `device-tree-compiler` (`fdtget`/`fdtput`) — the script offers to install it automatically
+- For DTB features: `device-tree-compiler` (`fdtget`/`fdtput`) — bundled in the script, no internet required
 
 ## Installation
 
