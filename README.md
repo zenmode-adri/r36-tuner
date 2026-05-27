@@ -41,7 +41,7 @@ The RK3326 OPP framework owns all voltage regulators — runtime sysfs writes ar
 
 The tuner detects your chip bin from `dmesg` (`pvtm-volt-sel`) and patches the correct property (`opp-microvolt-L2` for most units). Reboot required.
 
-**Tested results (L2 bin — most R36S units):**
+**Tested results on our unit (L2 bin):**
 
 | Component | Stock @ max freq | Stable UV limit |
 |-----------|-----------------|-----------------|
