@@ -55,7 +55,7 @@ The tuner detects your chip bin from `dmesg` (`pvtm-volt-sel`) and patches the c
 
 Adds a `opp-600000000` node to the GPU OPP table in the DTB. The GPU clock uses `gpll / 2 = 600 MHz` exactly — no clock driver changes needed.
 
-**Results (L2 bin):** 520 MHz → 600 MHz = **+20% GPU compute** (terrain benchmark). Confirmed stable floor: **1025 mV** (−125 mV from initial OC voltage of 1150 mV).
+**Results on our unit (L2 bin):** 520 MHz → 600 MHz = **+20% GPU compute** (terrain benchmark). Tested stable floor: **1025 mV** (−125 mV from initial OC voltage of 1150 mV). Your chip may differ.
 
 > `vdd_logic` is shared between GPU and DMC. See [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage).
 
@@ -65,7 +65,7 @@ For full voltage sweep and clock analysis see [docs/opp-research.md](docs/opp-re
 
 Unlocks 1608 MHz by patching `rockchip,avs-scale` from `4` to `0` in the DTB and adding an `opp-1608000000` node. The clock driver already contains 1608 MHz — it was being suppressed at boot.
 
-**Confirmed voltage (L2 bin): 1187.5 mV.** Seven synthetic benchmarks showed 0–2% difference vs 1512 MHz — the A35 pipeline hits throughput and latency ceilings before 1608 MHz on single-thread workloads. Real benefit is in emulation: JIT recompilation and multi-thread frame timing. The bigger single win is undervolting 1512 MHz to 1175 mV.
+**Tested voltage on our unit (L2 bin): 1187.5 mV.** Seven synthetic benchmarks showed 0–2% difference vs 1512 MHz — the A35 pipeline hits throughput and latency ceilings before 1608 MHz on single-thread workloads. Real benefit is in emulation: JIT recompilation and multi-thread frame timing. The bigger single win is undervolting 1512 MHz to 1175 mV.
 
 For full benchmark breakdown see [docs/opp-research.md](docs/opp-research.md).
 
@@ -80,7 +80,7 @@ Adds a `opp-928000000` node to the DMC OPP table. ATF v0x105 accepts 928 MHz and
 | 786 MHz (stock) | 4768 | 1300 |
 | **924 MHz (OC)** | **5516** | **1597** |
 
-vs stock: write **+15.7%**, copy **+22.8%**. Confirmed stable voltage floor: **987.5 mV**.
+vs stock: write **+15.7%**, copy **+22.8%**. Tested stable floor on our unit (L2 bin): **987.5 mV**. Your chip may differ.
 
 > `vdd_logic` is shared with GPU — see [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage).
 
@@ -94,7 +94,7 @@ The GPU and DMC share the `vdd_logic` rail. The PMIC always sets it to the **hig
 - To lower the effective rail, **both** must be undervolted below the target
 - Undervolting only one has no rail benefit if the other is higher
 
-**Confirmed floors (L2 bin):**
+**Tested floors on our unit (L2 bin):**
 
 | Component | OC freq | Voltage floor |
 |-----------|---------|--------------|
