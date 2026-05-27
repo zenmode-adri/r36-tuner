@@ -204,7 +204,7 @@ The PX30 clock driver (`drivers/clk/rockchip/clk-px30.c`) already contains 1608 
    ```
 2. Change `rockchip,avs-scale` from `4` to `0` in `/cpu0-opp-table`.
 
-Voltage used: 1350 mV (same as 1512 MHz stock L2 — conservative). Could probably be undervolted further.
+Voltage used: **1187.5 mV** (L2 bin, confirmed stable). Conservative starting point is 1350 mV (same as 1512 MHz stock L2); tuner lets user reduce from there.
 
 ### Benchmark results — ALU (LCG C, 10s)
 
@@ -217,7 +217,7 @@ Voltage used: 1350 mV (same as 1512 MHz stock L2 — conservative). Could probab
 | 1512 | 1870 | +25%        |
 | 1608 | 1900 | +27%        |
 
-**Sweet spot: 1512 MHz @ 1175 mV (undervolted).** 1608 MHz gives only +1.6% over 1512 MHz at stock voltage.
+**Sweet spot: 1512 MHz @ 1175 mV (undervolted).** Seven synthetic benchmarks showed 0–2% difference between 1512 and 1608 MHz — ALU throughput saturates at 1512 MHz, Coremark is L2-latency-bound (RAM OC has zero effect on it), L1 pointer chasing shows only +1.8% (theoretical +6.3%). The 1608 MHz benefit is real but only observable in emulation (JIT, multi-thread frame timing) — not in single-thread synthetic tests.
 GPU benchmark (terrain) is identical at all CPU frequencies — GPU-limited, not CPU-limited.
 
 ### GPU OC
@@ -240,15 +240,15 @@ Node: `/dmc-opp-table` · Rail: `vdd_logic` (shared with GPU and SoC logic)
 | 528 | 975  | 975  | **950**  | 950  |
 | 666 | 1050 | 1000 | **975**  | 950  |
 | 786 | 1100 | 1050 | **1025** | 1000 |
-| **928** | — | — | **1075** | — |
+| **928** | — | — | **987.5** | — |
 
 > 928 MHz row added via OC patch (see DMC OC section below).  
-> OPP node values: `opp-microvolt-L2 = 1075000`, `opp-microvolt = 1100000`.  
+> OPP node values: `opp-microvolt-L2 = 987500`. Confirmed stable floor (L2 bin): **987.5 mV** — see DMC UV sweep below.  
 > ATF delivers **924 MHz** (nearest PLL divisor to the requested 928 MHz).
 
 ### DMC Undervolt — not worth it
 
-The DMC shares `vdd_logic` with the GPU. The PMIC sets the rail to the maximum demanded by any consumer. When GPU OC is active at 1150 mV, DMC receives that same voltage regardless of its own OPP entry. Patching DMC L2 voltages lower has no effect on the rail — marginal power benefit at best, risk of DDR instability at worst.
+The DMC shares `vdd_logic` with the GPU. The PMIC sets the rail to the maximum demanded by any consumer. When GPU OC is active at 1025 mV, DMC receives that same voltage regardless of its own OPP entry. To effectively lower the rail, both GPU and DMC voltages must be reduced — see [README: vdd_logic shared rail](../README.md#vdd_logic-shared-rail--gpu--ram-oc-voltage). Patching DMC voltage lower than GPU OC has no rail benefit but does set the DMC floor for when GPU OC is not active.
 
 ### DMC OC — 928 MHz (confirmed working)
 
@@ -268,8 +268,8 @@ The correct model: ATF owns the *frequency switching* (register writes, DDR trai
 ```bash
 fdtput -c  /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000
 fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-hz 0 928000000
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 1075000
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 1100000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 987500
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 987500
 ```
 
 **Benchmark results (terrain off-screen, GPU OC 600 MHz active):**
@@ -279,13 +279,44 @@ fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvo
 | GPU OC only | 786 MHz | 18 | baseline |
 | GPU OC + DMC OC | 924 MHz | 18 | terrain = compute-bound |
 
+**RAM bandwidth sweep (128 MB memset + memcpy, compiled C, CPU pinned 1512 MHz, L2 bin):**
+
+| DMC freq | Write MB/s | Copy MB/s | Write delta | Copy delta |
+|----------|-----------|-----------|-------------|------------|
+| 528 MHz | 3178 | 1176 | base | base |
+| 666 MHz | 4044 | 1184 | +27% | +1% |
+| 786 MHz | 4768 | 1300 | +50% | +11% |
+| **924 MHz** | **5516** | **1597** | **+74%** | **+36%** |
+
+vs stock 786 MHz: write **+15.7%**, copy **+22.8%**. Write scales nearly linearly (pure bus throughput); copy scales less (read+write share the bus). Coremark shows 0% improvement with DMC OC — confirmed L2 latency-bound, not bandwidth-bound.
+
 terrain shows no change because Mali-G31 at 600 MHz is ALU-saturated. Expected benefits in real workloads:
 - **Emulation JIT**: CPU reads guest code + emulator state from RAM constantly → real speedup
 - **Texture sampling (UMA)**: Mali-G31 reads textures from system RAM each frame → more bandwidth available
 - **Loading times**: ROM decompression, save states, asset streaming → pure bandwidth
 - **Sustained performance**: CPU + GPU competing for same bus → more headroom for both
 
-**Voltage note:** When GPU OC is active (vdd_logic = 1150 mV), DMC OC at 1075 mV adds zero voltage cost — the rail is already at its PMIC max. Both OCs can coexist on the same rail without conflict.
+**Voltage note:** GPU OC is at 1025 mV (L2 bin confirmed stable floor), DMC OC at 987.5 mV — rail = 1025 mV (GPU wins). Both OCs coexist without conflict. See DMC UV sweep below for full floor data.
+
+### DMC UV Sweep — 928 MHz OPP (L2 bin)
+
+Automated sweep: CPU 1608 MHz, DMC pinned at 924 MHz (`governor=performance`), 128 MB memset+memcpy stress 30 s per step. Starting point: 1075 mV (conservative).
+
+| Voltage | Result | MB/s |
+|---------|--------|------|
+| 1075 mV | Stable (base) | — |
+| 1062.5 mV | ✅ Stable | 2585 |
+| 1050.0 mV | ✅ Stable | 2516 |
+| 1037.5 mV | ✅ Stable | 2606 |
+| 1025.0 mV | ✅ Stable | 2543 |
+| 1012.5 mV | ✅ Stable | 2639 |
+| 1000.0 mV | ✅ Stable | 2636 |
+| **987.5 mV** | **✅ Stable** | **2662** |
+| 975.0 mV | ❌ Crash mid-stress | — |
+
+**Confirmed floor: 987.5 mV** (−87.5 mV vs 1075 mV). 975 mV boots OK but crashes under sustained 128 MB RAM stress.
+
+> Temps across steps are not comparable — tests were chained without cooldown between reboots. Rising temps at lower voltages reflect accumulated heat, not voltage effect.
 
 ---
 

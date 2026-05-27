@@ -14,7 +14,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - **RAM OC to 928 MHz** — adds a 928 MHz OPP to the DMC OPP table. ATF v0x105 supports the frequency and delivers 924 MHz (nearest PLL divisor). +11% read bandwidth over stock 786 MHz (measured, CPU pinned, 5-run average).
 - **DTB safety net** — two systemd services protect against bad undervolts: an early-boot service detects if the previous boot hung after a DTB patch and automatically restores the original DTB backup before the system reaches userspace.
 - Real-time monitor (temp, freq, voltage) with overheat warning at ≥80°C
-- Benchmarks: CPU (sha256 + gzip), RAM (128MB r/w), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
+- Benchmarks: CPU (ALU int32 chains), RAM (128 MB memset/memcpy, compiled C), GPU (glmark2) — individually or all in sequence. Score history with baseline comparison.
 - Save profile → applies at every boot via systemd service
 - Fail-safe: panic flag detects boot hangs and auto-disables the profile
 - Startup warning if last boot profile caused a hang or if DTB was auto-restored
@@ -111,7 +111,7 @@ The RK3326 clock driver already contains 1608 MHz in `px30_cpuclk_rates` and `px
 1. Add `opp-1608000000` node to `/cpu0-opp-table` with desired voltage.
 2. Set `rockchip,avs-scale` from `4` to `0` — disables the AVS OPP stripping.
 
-Measured ALU gain of 1608 over 1512 MHz: **+1.6%** — likely an underestimate (1608/1512 = +6.3% more cycles; the gap suggests thermal or governor interference during the 10s test). Real-world gain for emulation (JIT + memory accesses) is probably somewhere between +1.6% and +6%. Either way, **1608 MHz is a modest step over 1512 MHz**. The bigger win is undervolting 1512 MHz to 1175 mV. GPU-bound workloads show no difference at any CPU frequency. Full benchmark table in [docs/opp-research.md](docs/opp-research.md).
+Seven synthetic benchmarks (ALU chains, Coremark, L1/L2 pointer chasing, and others) showed **0–2% difference** between 1512 and 1608 MHz. The A35 in-order pipeline hits ceilings before 1608 MHz on every single-thread workload: ALU throughput saturates at 1512 MHz, Coremark is L2-latency-bound (latency is fixed in nanoseconds, not clock cycles — RAM OC has zero effect on it). The CPU OC benefit is real but only observable in actual emulation: JIT recompilation, multi-thread frame timing, guest code fetch from RAM. The bigger win is undervolting: running 1512 MHz at 1175 mV rather than 1300 mV reduces heat with no performance cost. GPU-bound workloads show no difference at any CPU frequency. Full benchmark table in [docs/opp-research.md](docs/opp-research.md).
 
 A backup of the original DTB is created automatically before patching. The backup is used by both the safety service and the manual restore option in the menu.
 
@@ -128,28 +128,28 @@ ATF (ARM Trusted Firmware) v0x105 controls DDR frequency switching via SMC calls
 ```bash
 fdtput -c  /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000
 fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-hz 0 928000000
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 1075000
-fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 1100000
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt-L2 987500
+fdtput -t u /boot/rk3326-r36s-linux.dtb /dmc-opp-table/opp-928000000 opp-microvolt 987500
 ```
 
 After reboot, `available_frequencies` shows `528000000 666000000 786000000 928000000`. The `dmc_ondemand` governor scales up to 924 MHz under memory pressure.
 
-**Benchmark results:**
+**Benchmark results (128 MB memset + memcpy, compiled C, CPU pinned to 1512 MHz, L2 bin):**
 
-Memory bandwidth (128 MB dd read via `/dev/shm`, CPU pinned to 1512 MHz, 5 runs averaged, L2 bin):
+| DMC freq | Write MB/s | Copy MB/s |
+|----------|-----------|-----------|
+| 528 MHz | 3178 | 1176 |
+| 666 MHz | 4044 | 1184 |
+| 786 MHz (stock max) | 4768 | 1300 |
+| **924 MHz (OC)** | **5516** | **1597** |
 
-| DMC freq | Read MB/s |
-|----------|----------|
-| 786 MHz (stock max) | 966 |
-| **924 MHz (OC)**    | **1076** |
-
-Read bandwidth: **+11%** over stock 786 MHz. CPU frequency (1512 vs 1608 MHz) has no measurable effect on RAM bandwidth (<1% difference).
+vs stock 786 MHz: write **+15.7%**, copy **+22.8%**. Write scales nearly linearly with frequency (pure bus throughput). Copy scales less (read+write share the bus, saturates sooner).
 
 GPU terrain fps shows no change (18 fps at all DMC freqs) because Mali-G31 at 600 MHz is compute-bound, not bandwidth-bound. Benefits are real in mixed CPU+GPU workloads: emulator JIT, texture streaming, ROM loading, save states.
 
 > **UMA note:** Mali-G31 has no dedicated VRAM — it reads textures directly from system RAM. Faster RAM = faster texture sampling, though the effect is workload-dependent.
 
-**924 MHz is not just the stability limit — it is the performance optimum.** Frequencies above 928 MHz were tested: 996 MHz is stable but *slower* (1012 MB/s), 1056 MHz causes kernel panic under load. ATF's timing tables for 924 MHz are better calibrated than for higher frequencies; going higher yields worse bandwidth. Full analysis in [docs/opp-research.md](docs/opp-research.md).
+Full analysis in [docs/opp-research.md](docs/opp-research.md).
 
 ## vdd_logic Shared Rail — GPU & RAM OC Voltage
 
