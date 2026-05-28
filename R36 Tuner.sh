@@ -1489,7 +1489,7 @@ DTBGPUOC() {
     fi
 }
 
-# ── DMC / RAM OC 928 MHz ─────────────────────────────────────────────────────
+# ── DMC / RAM OC ─────────────────────────────────────────────────────────────
 
 DTBRAMOC() {
     local DTB="$1"
@@ -1505,24 +1505,52 @@ DTBRAMOC() {
         return
     fi
 
-    # Detect bin level — dmesg → cache → generic
+    # Detect bin level
     local DMC_BIN_PROP; DMC_BIN_PROP=$(DetectOPPBinProp "dmc")
     local DMC_BIN=""; [[ "$DMC_BIN_PROP" == *-L* ]] && DMC_BIN="${DMC_BIN_PROP##*-}"
 
-    # Current state — available_frequencies contains 928000000 if OPP active
-    local IS_ACTIVE=0
-    [ -n "$DMC_DEVFREQ" ] && grep -q "928000000" "$DMC_DEVFREQ/available_frequencies" 2>/dev/null \
-        && IS_ACTIVE=1
-    local HAS_NODE=0
-    fdtget "$DTB" "$DMC_OPP/opp-928000000" opp-hz >/dev/null 2>&1 && HAS_NODE=1
+    if [ "$DMC_BIN_PROP" = "opp-microvolt" ]; then
+        dialog --backtitle "$BACKTITLE" --title "[ RAM OC ]" \
+            --msgbox "Bin not detected — reboot and try again." 5 50 > "$CURR_TTY"
+        return
+    fi
+
+    # Detect which OC nodes exist in DTB
+    local HAS_928=0 HAS_1040=0
+    fdtget "$DTB" "$DMC_OPP/opp-928000000"  opp-hz >/dev/null 2>&1 && HAS_928=1
+    fdtget "$DTB" "$DMC_OPP/opp-1040000000" opp-hz >/dev/null 2>&1 && HAS_1040=1
 
     # ── Tune voltage (OPP node already exists) ───────────────────────────────
-    if [ $HAS_NODE -eq 1 ]; then
-        local CUR_UV; CUR_UV=$(fdtget -t u "$DTB" "$DMC_OPP/opp-928000000" "$DMC_BIN_PROP" 2>/dev/null | awk '{print $1}')
+    if [ $HAS_928 -eq 1 ] || [ $HAS_1040 -eq 1 ]; then
+        # If both exist let user pick which to tune; otherwise pick the one that exists
+        local TUNE_HZ ATF_MHZ TUNE_LABEL
+        if [ $HAS_928 -eq 1 ] && [ $HAS_1040 -eq 1 ]; then
+            local PICK
+            PICK=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — SELECT ]" \
+                --menu "Two OC OPPs found. Which to tune?" 10 52 2 \
+                928000000  "924 MHz (ATF)" \
+                1040000000 "1032 MHz (ATF) [EXPERIMENTAL]" \
+                2>&1 > "$CURR_TTY")
+            [ -z "$PICK" ] && return
+            TUNE_HZ="$PICK"
+        elif [ $HAS_1040 -eq 1 ]; then
+            TUNE_HZ=1040000000
+        else
+            TUNE_HZ=928000000
+        fi
+        [ "$TUNE_HZ" = "928000000" ]  && ATF_MHZ="924"  && TUNE_LABEL="928 MHz (ATF: 924)"
+        [ "$TUNE_HZ" = "1040000000" ] && ATF_MHZ="1032" && TUNE_LABEL="1040 MHz (ATF: 1032) [EXPERIMENTAL]"
+
+        local IS_ACTIVE=0
+        [ -n "$DMC_DEVFREQ" ] && grep -q "${TUNE_HZ}" "$DMC_DEVFREQ/available_frequencies" 2>/dev/null \
+            && IS_ACTIVE=1
+        local STATUS_LINE; [ $IS_ACTIVE -eq 1 ] && STATUS_LINE="ACTIVE" || STATUS_LINE="pending reboot"
+
+        local CUR_UV; CUR_UV=$(fdtget -t u "$DTB" "$DMC_OPP/opp-${TUNE_HZ}" "$DMC_BIN_PROP" 2>/dev/null | awk '{print $1}')
         local CUR_MV=$(( ${CUR_UV:-0} / 1000 ))
         local CUR_FRAC=$(( ${CUR_UV:-0} % 1000 ))
         local CUR_STR="${CUR_MV}"; [ "$CUR_FRAC" -eq 500 ] && CUR_STR="${CUR_MV}.5"
-        local STATUS_LINE; [ $IS_ACTIVE -eq 1 ] && STATUS_LINE="ACTIVE" || STATUS_LINE="pending reboot"
+
         local -a VOLT_ITEMS=()
         local v=1150000
         while [ $v -ge 950000 ]; do
@@ -1533,38 +1561,51 @@ DTBRAMOC() {
         done
         local VOLT_UV
         VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — TUNE VOLTAGE ]" \
-            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\nSelect new voltage for 928 MHz OPP.\nvdd_logic shared: too low = may not boot." \
-            19 52 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
+            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\n${TUNE_LABEL}\nvdd_logic shared: too low = may not boot." \
+            19 56 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
         [ -z "$VOLT_UV" ] && return
         local VOLT_MV=$(( VOLT_UV / 1000 ))
         local VOLT_FRAC=$(( VOLT_UV % 1000 ))
         local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
         dialog --backtitle "$BACKTITLE" --title "[ RAM OC — CONFIRM ]" \
-            --yesno "928 MHz: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 50 > "$CURR_TTY"
+            --yesno "${TUNE_LABEL}: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 56 > "$CURR_TTY"
         [ $? -ne 0 ] && return
-        fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" "$DMC_BIN_PROP" $VOLT_UV 2>/dev/null
+        fdtput -t u "$DTB" "$DMC_OPP/opp-${TUNE_HZ}" "$DMC_BIN_PROP" $VOLT_UV 2>/dev/null
         [ "$DMC_BIN_PROP" != "opp-microvolt" ] && \
-            fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-microvolt $VOLT_UV 2>/dev/null
+            fdtput -t u "$DTB" "$DMC_OPP/opp-${TUNE_HZ}" opp-microvolt $VOLT_UV 2>/dev/null
         sync; touch "$DTB_PENDING"; SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ Voltage Updated" \
-            --yesno "928 MHz: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 48 > "$CURR_TTY"
+            --yesno "${TUNE_LABEL}: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 56 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
         return
     fi
 
-    # ── First apply (OPP node does not exist yet) ─────────────────────────────
-    local STATE_MSG="Status: not active — DTB patch required\n\n"
-    local DMC_OC_BODY="ATF v0x105 confirmed to support this frequency.\nKernel requests 928 MHz — ATF delivers 924 MHz\n(nearest PLL divisor).\n\nvdd_logic SHARED with GPU. When GPU OC is active\n(1150 mV), no extra voltage cost for RAM OC.\n\n+18% RAM bandwidth over 786 MHz.\nBenefits: CPU JIT, texture reads, emulator loading.\nGPU compute-bound workloads: no fps change."
-    if [ "$DMC_BIN_PROP" = "opp-microvolt" ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ RAM OC — 928 MHz ]" \
-            --msgbox "${STATE_MSG}${DMC_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 60 > "$CURR_TTY"
-        return
+    # ── First apply (no OC node exists yet) ──────────────────────────────────
+
+    # Frequency selection
+    local FREQ_HZ
+    FREQ_HZ=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — SELECT FREQUENCY ]" \
+        --menu "ATF v0x105 tested frequencies.\nHigher = more bandwidth, higher voltage.\nvdd_logic shared with GPU." \
+        12 60 2 \
+        928000000  "924 MHz (ATF)         — tested, UV floor 987.5 mV" \
+        1040000000 "1032 MHz (ATF)        — EXPERIMENTAL, 1150 mV only" \
+        2>&1 > "$CURR_TTY")
+    [ -z "$FREQ_HZ" ] && return
+
+    local OPP_NODE ATF_MHZ FREQ_INFO
+    if [ "$FREQ_HZ" = "928000000" ]; then
+        OPP_NODE="opp-928000000"; ATF_MHZ="924"
+        FREQ_INFO="ATF delivers 924 MHz (nearest PLL divisor).\nvdd_logic shared with GPU. No extra voltage\ncost when GPU OC active at 1150 mV.\n\nTested UV floor (L2 bin): 987.5 mV.\n+35% bandwidth vs stock 786 MHz."
+    else
+        OPP_NODE="opp-1040000000"; ATF_MHZ="1032"
+        FREQ_INFO="ATF delivers 1032 MHz (nearest PLL divisor).\n\n⚠ EXPERIMENTAL — only 1150 mV tested.\n1150 mV = PMIC hard limit for vdd_logic.\nNo undervolt margin confirmed.\n\n+43% bandwidth vs stock 786 MHz."
     fi
-    dialog --backtitle "$BACKTITLE" --title "[ RAM OC — 928 MHz ]" \
-        --yesno "${STATE_MSG}${DMC_OC_BODY}\n\nContinue?" 19 60 > "$CURR_TTY"
+
+    dialog --backtitle "$BACKTITLE" --title "[ RAM OC — ${ATF_MHZ} MHz ]" \
+        --yesno "Status: not active — DTB patch required\n\n${FREQ_INFO}\n\nContinue?" 16 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
-    # Voltage selection — full hardware range 950–1150 mV, 12.5 mV steps
+    # Voltage selection
     local STOCK_DMC_MV; STOCK_DMC_MV=$(fdtget -t u "$DTB" "$DMC_OPP/opp-786000000" "$DMC_BIN_PROP" 2>/dev/null | awk '{print int($1/1000)}')
     [ -z "$STOCK_DMC_MV" ] && STOCK_DMC_MV="?"
     local -a VOLT_ITEMS=()
@@ -1576,11 +1617,9 @@ DTBRAMOC() {
         v=$(( v - 12500 ))
     done
     local VOLT_UV
-    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — VOLTAGE @ 928 MHz ]" \
+    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — VOLTAGE @ ${ATF_MHZ} MHz ]" \
         --menu "Stock 786 MHz = ${STOCK_DMC_MV} mV (your chip)\nStart high — go down gradually.\nvdd_logic shared: too low = may not boot." \
-        19 52 10 \
-        "${VOLT_ITEMS[@]}" \
-        2>&1 > "$CURR_TTY")
+        19 56 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
     [ -z "$VOLT_UV" ] && return
 
     local VOLT_MV=$(( VOLT_UV / 1000 ))
@@ -1591,7 +1630,7 @@ DTBRAMOC() {
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
     dialog --backtitle "$BACKTITLE" --title "[ RAM OC — CONFIRM ]" \
-        --yesno "Apply RAM OC 928 MHz (ATF: 924 MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/opp-928000000\n    opp-hz: 0 928000000\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 13 58 > "$CURR_TTY"
+        --yesno "Apply RAM OC ${FREQ_HZ:0:4} MHz (ATF: ${ATF_MHZ} MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/$OPP_NODE\n    opp-hz: 0 ${FREQ_HZ}\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     if [ ! -f "${DTB}.bak" ]; then
@@ -1601,18 +1640,18 @@ DTBRAMOC() {
     dialog --infobox "Patching RAM OC DTB..." 4 35 > "$CURR_TTY"
 
     local FAIL=0
-    fdtput -c "$DTB" "$DMC_OPP/opp-928000000" 2>/dev/null || FAIL=1
-    fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-hz 0 928000000 2>/dev/null || FAIL=1
-    fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" "$DMC_BIN_PROP" $VOLT_UV 2>/dev/null || FAIL=1
+    fdtput -c  "$DTB" "$DMC_OPP/$OPP_NODE" 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$DMC_OPP/$OPP_NODE" opp-hz 0 $FREQ_HZ 2>/dev/null || FAIL=1
+    fdtput -t u "$DTB" "$DMC_OPP/$OPP_NODE" "$DMC_BIN_PROP" $VOLT_UV 2>/dev/null || FAIL=1
     [ "$DMC_BIN_PROP" != "opp-microvolt" ] && \
-        fdtput -t u "$DTB" "$DMC_OPP/opp-928000000" opp-microvolt 1100000 2>/dev/null
+        fdtput -t u "$DTB" "$DMC_OPP/$OPP_NODE" opp-microvolt $VOLT_UV 2>/dev/null
 
     if [ $FAIL -eq 0 ]; then
         sync
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ RAM OC Patched" \
-            --yesno "928 MHz OPP added @ ${VOLT_STR} mV\n(ATF delivers 924 MHz)\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
+            --yesno "${FREQ_HZ:0:4} MHz OPP added @ ${VOLT_STR} mV\n(ATF delivers ${ATF_MHZ} MHz)\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ RAM OC ]" \
