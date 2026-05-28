@@ -320,6 +320,46 @@ Automated sweep: CPU 1608 MHz, DMC pinned at 924 MHz (`governor=performance`), 1
 
 ---
 
+## Real-World Gaming Impact — God of War: Ghost of Sparta (PSP / PPSSPP)
+
+Measured in-game via LD_PRELOAD overlay (FPS sampled every second, 10s average per step).  
+Device: L2 bin · CPU fixed at 1608 MHz throughout.
+
+### RAM frequency sweep (GPU fixed at 600 MHz)
+
+| DMC freq | FPS avg | Delta vs stock |
+|----------|---------|----------------|
+| 528 MHz  | 21.2    | baseline       |
+| 666 MHz  | 22.9    | +8%            |
+| 786 MHz  | 25.6    | +21%           |
+| 924 MHz  | 26.7    | +26%           |
+| **1032 MHz** | **28.6** | **+35%**   |
+
+### GPU frequency sweep (RAM fixed at 1032 MHz)
+
+| GPU freq | FPS avg | Delta vs 400 MHz |
+|----------|---------|------------------|
+| 400 MHz  | 24.5    | baseline         |
+| 480 MHz  | 26.6    | +9%              |
+| 520 MHz  | 26.0    | +6%              |
+| **600 MHz** | **28.0** | **+14%**      |
+
+> 480 → 520 MHz shows no gain (within variance). Meaningful steps: 400→480 and 520→600.
+
+### Component impact summary
+
+| Tuning change | FPS gain | Relative impact |
+|---------------|----------|-----------------|
+| RAM 528 → 1032 MHz | +7.4 FPS | **highest** |
+| GPU 400 → 600 MHz  | +3.5 FPS | medium |
+| CPU 1200 → 1608 MHz | ~+3 FPS | low |
+
+**RAM dominates in PSP emulation.** CPU and GPU share a UMA bus — every frame the JIT engine writes recompiled code, the GPU reads textures, and the CPU reads guest instructions, all competing for the same physical memory. Bandwidth is the real bottleneck, not compute.
+
+GPU terrain benchmark (synthetic, off-screen) shows **zero** sensitivity to RAM frequency — the Mali-G31 shader is ALU-saturated at 600 MHz. Real-world UMA workloads are a different story.
+
+---
+
 ## DTB File Info
 
 ```
