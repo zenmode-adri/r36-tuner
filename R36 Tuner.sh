@@ -1520,24 +1520,30 @@ DTBRAMOC() {
     fdtget "$DTB" "$DMC_OPP/opp-928000000"  opp-hz >/dev/null 2>&1 && HAS_928=1
     fdtget "$DTB" "$DMC_OPP/opp-1040000000" opp-hz >/dev/null 2>&1 && HAS_1040=1
 
-    # ── Tune voltage (OPP node already exists) ───────────────────────────────
-    if [ $HAS_928 -eq 1 ] || [ $HAS_1040 -eq 1 ]; then
-        # If both exist let user pick which to tune; otherwise pick the one that exists
-        local TUNE_HZ ATF_MHZ TUNE_LABEL
-        if [ $HAS_928 -eq 1 ] && [ $HAS_1040 -eq 1 ]; then
-            local PICK
-            PICK=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — SELECT ]" \
-                --menu "Two OC OPPs found. Which to tune?" 10 52 2 \
-                928000000  "924 MHz (ATF)" \
-                1040000000 "1032 MHz (ATF) [EXPERIMENTAL]" \
-                2>&1 > "$CURR_TTY")
-            [ -z "$PICK" ] && return
-            TUNE_HZ="$PICK"
-        elif [ $HAS_1040 -eq 1 ]; then
-            TUNE_HZ=1040000000
-        else
-            TUNE_HZ=928000000
-        fi
+    # ── Tune voltage or add second OPP ───────────────────────────────────────
+    local TUNE_HZ="" ADD_OPP_HZ="" ATF_MHZ TUNE_LABEL
+    if [ $HAS_928 -eq 1 ] && [ $HAS_1040 -eq 1 ]; then
+        local PICK
+        PICK=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — SELECT ]" \
+            --menu "Two OC OPPs found. Which to tune?" 10 52 2 \
+            928000000  "924 MHz (ATF)" \
+            1040000000 "1032 MHz (ATF) [EXPERIMENTAL]" \
+            2>&1 > "$CURR_TTY")
+        [ -z "$PICK" ] && return
+        TUNE_HZ="$PICK"
+    elif [ $HAS_1040 -eq 1 ]; then
+        TUNE_HZ=1040000000
+    elif [ $HAS_928 -eq 1 ]; then
+        local PICK
+        PICK=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — 924 MHz ACTIVE ]" \
+            --menu "924 MHz OC is active. What to do?" 9 52 2 \
+            tune "Tune 924 MHz voltage" \
+            add  "Add 1032 MHz [EXPERIMENTAL]" \
+            2>&1 > "$CURR_TTY")
+        [ -z "$PICK" ] && return
+        [ "$PICK" = "tune" ] && TUNE_HZ=928000000 || ADD_OPP_HZ=1040000000
+    fi
+    if [ -n "$TUNE_HZ" ]; then
         [ "$TUNE_HZ" = "928000000" ]  && ATF_MHZ="924"  && TUNE_LABEL="928 MHz (ATF: 924)"
         [ "$TUNE_HZ" = "1040000000" ] && ATF_MHZ="1032" && TUNE_LABEL="1040 MHz (ATF: 1032) [EXPERIMENTAL]"
 
@@ -1582,15 +1588,17 @@ DTBRAMOC() {
 
     # ── First apply (no OC node exists yet) ──────────────────────────────────
 
-    # Frequency selection
-    local FREQ_HZ
-    FREQ_HZ=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — SELECT FREQUENCY ]" \
-        --menu "ATF v0x105 tested frequencies.\nHigher = more bandwidth, higher voltage.\nvdd_logic shared with GPU." \
-        12 60 2 \
-        928000000  "924 MHz (ATF)         — tested, UV floor 987.5 mV" \
-        1040000000 "1032 MHz (ATF)        — EXPERIMENTAL, 1150 mV only" \
-        2>&1 > "$CURR_TTY")
-    [ -z "$FREQ_HZ" ] && return
+    # Frequency selection — skip if user chose "add" from active-OC menu
+    local FREQ_HZ="${ADD_OPP_HZ}"
+    if [ -z "$FREQ_HZ" ]; then
+        FREQ_HZ=$(dialog --backtitle "$BACKTITLE" --title "[ RAM OC — SELECT FREQUENCY ]" \
+            --menu "ATF v0x105 tested frequencies.\nHigher = more bandwidth, higher voltage.\nvdd_logic shared with GPU." \
+            12 60 2 \
+            928000000  "924 MHz (ATF)         — tested, UV floor 987.5 mV" \
+            1040000000 "1032 MHz (ATF)        — EXPERIMENTAL, 1150 mV only" \
+            2>&1 > "$CURR_TTY")
+        [ -z "$FREQ_HZ" ] && return
+    fi
 
     local OPP_NODE ATF_MHZ FREQ_INFO
     if [ "$FREQ_HZ" = "928000000" ]; then

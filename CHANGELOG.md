@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+**Bug fix:**
+
+- Fix: RAM OC menu now offers "Tune 924 MHz voltage" or "Add 1032 MHz [EXPERIMENTAL]" when 924 MHz OC is already active but 1032 MHz is not. Previously the menu went straight to voltage tuning with no way to add the second OPP.
+
 ## v4.3 — 2026-05-27
 
 **Bug fix:**
