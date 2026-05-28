@@ -90,6 +90,22 @@ vs stock: write **+15.7%**, copy **+22.8%**. Tested stable floor on our unit (L2
 
 For full ATF/DMC mechanism and bandwidth sweep see [docs/opp-research.md](docs/opp-research.md).
 
+### ⚗️ Experimental — 1040 MHz OC (ATF delivers 1032 MHz)
+
+> **Not available in the script yet. Under active testing — do not attempt manually.**
+
+Preliminary bandwidth results on our unit (L2 bin, same methodology as above):
+
+| DMC freq | Write MB/s | Copy MB/s |
+|----------|-----------|-----------|
+| 786 MHz (stock) | 4953 | 1539 |
+| 924 MHz (current OC) | 5665 | 1653 |
+| **1032 MHz (experimental)** | **6725** | **1810** |
+
+vs stock: write **+35.8%**, copy **+17.6%**.
+
+Hard constraint: 1032 MHz requires **1150 mV** on `vdd_logic` — the PMIC maximum for this rail. There is no undervolt margin, and it raises the shared rail above the GPU OC stable floor (1025 mV). Long-term stability and thermal impact are still being evaluated before this becomes an option in the script.
+
 ## vdd_logic Shared Rail — GPU & RAM OC Voltage
 
 The GPU and DMC share the `vdd_logic` rail. The PMIC always sets it to the **highest voltage demanded by any consumer**.
