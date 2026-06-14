@@ -4,6 +4,30 @@
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
 
+# ── SDL2 UI launcher (experimental) ───────────────────────────────────────────
+# Launch the graphical SDL2 UI instead of the dialog menu when requested via
+# the --ui argument or the R36_TUNER_UI=1 environment variable.
+if { [ "$1" = "--ui" ] || [ "$R36_TUNER_UI" = "1" ]; }; then
+    # Consume the flag so the launcher does not receive it
+    [ "$1" = "--ui" ] && shift
+    if [ -x "/opt/system/R36 Tuner Next.sh" ]; then
+        exec "/opt/system/R36 Tuner Next.sh"
+    elif [ -x /opt/system/tuner_ui ]; then
+        # Fallback inline launch if the dedicated launcher is missing
+        export SDL_VIDEO_EGL_DRIVER=/lib/aarch64-linux-gnu/libEGL.so
+        export XDG_RUNTIME_DIR=/run/user/1000
+        export SDL_GAMECONTROLLERCONFIG_FILE=/opt/inttools/gamecontrollerdb.txt
+        systemctl stop emulationstation 2>/dev/null || true
+        pkill -9 emulationstation 2>/dev/null || true
+        sleep 1
+        /opt/system/tuner_ui
+        UI_EXIT=$?
+        systemctl start emulationstation 2>/dev/null || true
+        exit ${UI_EXIT}
+    fi
+    # If neither launcher exists, fall through to the dialog menu
+fi
+
 VERSION="4.3"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
@@ -238,7 +262,7 @@ fi
 touch "$PANIC" && sync
 source "$CFG"
 
-val_mv() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 800 ] && [ "$1" -le 1350 ]; }
+val_mv() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 950 ] && [ "$1" -le 1350 ]; }
 val_hz() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 100000 ]; }
 
 apply_reg() {
@@ -246,7 +270,7 @@ apply_reg() {
     for d in /sys/class/regulator/regulator.*; do
         [ "$(cat "$d/name" 2>/dev/null)" = "$name" ] && dir="$d" && break
     done
-    [ -z "$dir" ] || ! val_mv "$mv" && return
+    { [ -z "$dir" ] || ! val_mv "$mv"; } && return
     [ ! -w "$dir/microvolts" ] && return
     local uv=$(( mv * 1000 ))
     local cur_min; cur_min=$(cat "$dir/min_microvolts" 2>/dev/null || echo 0)
@@ -861,7 +885,7 @@ DTBUndervoltMenu() {
         $H 58 $DTB_ITEMS \
         "patch"   "CPU Undervolt — patch OPP voltages" \
         "gpu"     "GPU Undervolt — patch GPU OPP (vdd_logic)" \
-        "oc"      "CPU OC 1608 MHz — unlock via DTB${OC_STATUS}" \
+        "oc"      "CPU OC (teacupx) — unlock via DTB${OC_STATUS}" \
         "gpuoc"   "GPU OC 600 MHz — unlock via DTB${GPU_OC_STATUS}" \
         "dmcoc"   "RAM OC 928 MHz — unlock via DTB${DMC_OC_STATUS}" \
         "diag"    "Diagnose — disk vs kernel OPP" \
@@ -1254,14 +1278,14 @@ DTBCPUOC() {
         done
         local VOLT_UV
         VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — TUNE VOLTAGE ]" \
-            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\nSelect new voltage for 1608 MHz OPP.\nToo low = may not boot (safety service helps)." \
+            --menu "Status: ${STATUS_LINE}  |  Current: ${CUR_STR} mV\nSelect new voltage for CPU OC OPP.\nToo low = may not boot (safety service helps)." \
             19 52 10 "${VOLT_ITEMS[@]}" 2>&1 > "$CURR_TTY")
         [ -z "$VOLT_UV" ] && return
         local VOLT_MV=$(( VOLT_UV / 1000 ))
         local VOLT_FRAC=$(( VOLT_UV % 1000 ))
         local VOLT_STR="${VOLT_MV}"; [ "$VOLT_FRAC" -eq 500 ] && VOLT_STR="${VOLT_MV}.5"
         dialog --backtitle "$BACKTITLE" --title "[ CPU OC — CONFIRM ]" \
-            --yesno "1608 MHz: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 50 > "$CURR_TTY"
+            --yesno "CPU OC: ${CUR_STR} mV -> ${VOLT_STR} mV\nReboot required." 7 50 > "$CURR_TTY"
         [ $? -ne 0 ] && return
         fdtput -t u "$DTB" "$OPP_BASE/opp-1608000000" "$OPP_BIN_PROP" \
             $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null
@@ -1270,20 +1294,20 @@ DTBCPUOC() {
                 $VOLT_UV $VOLT_UV $VOLT_UV 2>/dev/null
         sync; touch "$DTB_PENDING"; SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ Voltage Updated" \
-            --yesno "1608 MHz: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 48 > "$CURR_TTY"
+            --yesno "CPU OC: ${CUR_STR} -> ${VOLT_STR} mV\n\nReboot now?" 7 48 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
         return
     fi
 
     # ── First apply (OPP node does not exist yet) ─────────────────────────────
     local STATE_MSG="Status: not active — DTB patch required\n\n"
-    local CPU_OC_BODY="Silicon quality varies — not all R36S units are equal.\n\nMechanism (no kernel recompile needed):\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n     (was 4, which stripped OPPs >1512 MHz at boot)\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup."
+    local CPU_OC_BODY="Requires teacupx kernel (github.com/teacupx/overclock-r36s).\nWithout it, the CPU won't exceed ~1296 MHz regardless of this patch.\nWith teacupx installed: real max is 1512 MHz.\n\nMechanism:\n  1. Adds opp-1608000000 node to DTB\n  2. Sets rockchip,avs-scale=0\n\nThe safety service protects against boot hangs\nbut NOT against early kernel panics.\nHave a PC + SD card reader available as backup."
     if [ "$OPP_BIN_PROP" = "opp-microvolt" ]; then
-        dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
+        dialog --backtitle "$BACKTITLE" --title "[ CPU OC (teacupx) ]" \
             --msgbox "${STATE_MSG}${CPU_OC_BODY}\n\n⚠ Bin not detected — reboot and try again." 21 58 > "$CURR_TTY"
         return
     fi
-    dialog --backtitle "$BACKTITLE" --title "[ CPU OC — 1608 MHz ]" \
+    dialog --backtitle "$BACKTITLE" --title "[ CPU OC (teacupx) ]" \
         --yesno "${STATE_MSG}${CPU_OC_BODY}\n\nContinue?" 19 58 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
@@ -1293,11 +1317,13 @@ DTBCPUOC() {
     local -a VOLT_ITEMS=()
     local v=1350000
     while [ $v -ge 950000 ]; do
-        VOLT_ITEMS+=("$v" "$(( v / 1000 )) mV")
+        local mv=$(( v / 1000 )); local frac=$(( v % 1000 ))
+        local lbl="${mv} mV"; [ "$frac" -eq 500 ] && lbl="${mv}.5 mV"
+        VOLT_ITEMS+=("$v" "$lbl")
         v=$(( v - 12500 ))
     done
     local VOLT_UV
-    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — VOLTAGE @ 1608 MHz ]" \
+    VOLT_UV=$(dialog --backtitle "$BACKTITLE" --title "[ CPU OC — VOLTAGE (teacupx) ]" \
         --menu "Stock 1512 MHz = ${STOCK_MV} mV (your chip)\nStart high — go down gradually.\nToo low = may not boot (safety service helps)." \
         19 52 10 \
         "${VOLT_ITEMS[@]}" \
@@ -1310,7 +1336,7 @@ DTBCPUOC() {
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU OC — CONFIRM ]" \
-        --yesno "Apply CPU OC 1608 MHz @ ${VOLT_MV} mV\n\nDTB changes:\n  + $OPP_BASE/opp-1608000000\n    ${OPP_BIN_PROP} = ${VOLT_MV} ${VOLT_MV} ${VOLT_MV} mV\n  + rockchip,avs-scale = 0\n\n${BAK_NOTE}\nReboot required." 13 60 > "$CURR_TTY"
+        --yesno "Apply CPU OC @ ${VOLT_MV} mV\n\nDTB changes:\n  + $OPP_BASE/opp-1608000000\n    ${OPP_BIN_PROP} = ${VOLT_MV} ${VOLT_MV} ${VOLT_MV} mV\n  + rockchip,avs-scale = 0\n\n${BAK_NOTE}\nReboot required." 13 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     # Backup (preserve true original — never overwrite)
@@ -1338,7 +1364,7 @@ DTBCPUOC() {
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ OC Patched" \
-            --yesno "1608 MHz OPP added @ ${VOLT_MV} mV\nrockchip,avs-scale → 0\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
+            --yesno "CPU OC OPP added @ ${VOLT_MV} mV\nrockchip,avs-scale → 0\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ CPU OC ]" \
@@ -1638,7 +1664,7 @@ DTBRAMOC() {
         || BAK_NOTE="Backup: ${DTB}.bak (will create)"
 
     dialog --backtitle "$BACKTITLE" --title "[ RAM OC — CONFIRM ]" \
-        --yesno "Apply RAM OC ${FREQ_HZ:0:4} MHz (ATF: ${ATF_MHZ} MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/$OPP_NODE\n    opp-hz: 0 ${FREQ_HZ}\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 60 > "$CURR_TTY"
+        --yesno "Apply RAM OC $(( FREQ_HZ / 1000000 )) MHz (ATF: ${ATF_MHZ} MHz) @ ${VOLT_STR} mV\n\nDTB changes:\n  + $DMC_OPP/$OPP_NODE\n    opp-hz: 0 ${FREQ_HZ}\n    ${DMC_BIN_PROP} = ${VOLT_STR} mV\n\n${BAK_NOTE}\nReboot required." 14 60 > "$CURR_TTY"
     [ $? -ne 0 ] && return
 
     if [ ! -f "${DTB}.bak" ]; then
@@ -1659,7 +1685,7 @@ DTBRAMOC() {
         touch "$DTB_PENDING"
         SetupDTBSafetyService
         dialog --backtitle "$BACKTITLE" --title "✓ RAM OC Patched" \
-            --yesno "${FREQ_HZ:0:4} MHz OPP added @ ${VOLT_STR} mV\n(ATF delivers ${ATF_MHZ} MHz)\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
+            --yesno "$(( FREQ_HZ / 1000000 )) MHz OPP added @ ${VOLT_STR} mV\n(ATF delivers ${ATF_MHZ} MHz)\nBackup: ${DTB}.bak\n\nSafety net active.\n\nReboot now to activate?" 11 52 > "$CURR_TTY"
         [ $? -eq 0 ] && reboot
     else
         dialog --backtitle "$BACKTITLE" --title "[ RAM OC ]" \
@@ -1726,18 +1752,11 @@ MonitorMenu() {
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
 
-BenchmarkCPU() {
+CompileCPUBench() {
     local CPU_BENCH=/tmp/r36_cpubench_30s_o1
-
-    # Compile benchmark on first use
-    if [ ! -x "$CPU_BENCH" ] && ! command -v gcc >/dev/null 2>&1; then
-        dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
-            --msgbox "gcc not found — cannot compile ALU benchmark.\nInstall: apt install gcc" \
-            6 55 > "$CURR_TTY"
-        return
-    fi
-    if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
-        cat > /tmp/r36_cpubench_30s.c << 'CSRC'
+    [ -x "$CPU_BENCH" ] && return 0
+    command -v gcc >/dev/null 2>&1 || return 1
+    cat > /tmp/r36_cpubench_30s.c << 'CSRC'
 #include <stdio.h>
 #include <time.h>
 #include <stdint.h>
@@ -1762,7 +1781,18 @@ int main() {
     return 0;
 }
 CSRC
-        gcc -O1 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
+    gcc -O1 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
+    [ -x "$CPU_BENCH" ]
+}
+
+BenchmarkCPU() {
+    local CPU_BENCH=/tmp/r36_cpubench_30s_o1
+
+    if ! CompileCPUBench; then
+        dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
+            --msgbox "gcc not found — cannot compile ALU benchmark.\nInstall: apt install gcc" \
+            6 55 > "$CURR_TTY"
+        return
     fi
 
     dialog --backtitle "$BACKTITLE" --title "[ BENCHMARK — CPU ]" \
@@ -1808,8 +1838,10 @@ CSRC
             REL_DISP="  Score: ${PCT}%  (${SIGN}${DIFF}% vs baseline ${BASE} Mops/30s)"
         fi
     else
-        echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
-        REL_DISP="  Score: 100% (baseline set)"
+        if [ "$SCORE" -gt 0 ] 2>/dev/null; then
+            echo "$SCORE" > "$BASELINE_FILE" 2>/dev/null
+            REL_DISP="  Score: 100% (baseline set)"
+        fi
     fi
 
     local MHZ; MHZ=$(GetCPUMaxMHz)
@@ -1820,11 +1852,12 @@ CSRC
         "$(date '+%Y-%m-%d %H:%M')" "$MHZ" "$MV" "$GOV" "$TEMP_DISP" "$SCORE_DISP" \
         >> "$SCORES_FILE" 2>/dev/null
 
-    echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
+    [ -n "$GOV_PREV" ] && [ "$GOV_PREV" != "N/A" ] && \
+        echo "$GOV_PREV" > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
     local OC_NOTE="" DLG_H=10
-    [ "${MHZ:-0}" -ge 1600 ] 2>/dev/null && \
-        OC_NOTE="\n\n1512/1608 MHz scores may be similar (ALU ceiling).\nIn-game benefit varies by workload." && \
+    [ "${MHZ:-0}" -ge 1400 ] 2>/dev/null && \
+        OC_NOTE="\n\nCPU OC requires teacupx kernel for real effect (max 1512 MHz).\nIn-game benefit varies by workload." && \
         DLG_H=13
 
     dialog --backtitle "$BACKTITLE" --title "[ CPU RESULTS ]" \
@@ -1973,6 +2006,11 @@ InstallGlmark2Legacy() {
     # Patch data: glmark2 2023.01 shaders use MEDIUMP_OR_DEFAULT/HIGHP_OR_DEFAULT
     # which the 2021.02 binary doesn't define — patch them to real qualifiers
     if [ ! -d "$data_dst/shaders" ]; then
+        if [ ! -d /usr/share/glmark2/shaders ]; then
+            dialog --backtitle "$BACKTITLE" --title "[ GLMARK2 LEGACY ]" \
+                --msgbox "glmark2-data not installed.\nRun GPU Benchmark first to install it." 6 52 > "$CURR_TTY"
+            return 1
+        fi
         mkdir -p "$data_dst/shaders"
         ln -sf /usr/share/glmark2/models "$data_dst/models"
         ln -sf /usr/share/glmark2/textures "$data_dst/textures"
@@ -1996,8 +2034,8 @@ InstallGlmark2() {
         rm -f "$tmp_bin" "$tmp_data"
         return 1
     fi
-    echo ark | sudo -S dpkg -i "$tmp_data" >/dev/null 2>&1
-    echo ark | sudo -S dpkg -i "$tmp_bin" >/dev/null 2>&1
+    dpkg -i "$tmp_data" >/dev/null 2>&1
+    dpkg -i "$tmp_bin" >/dev/null 2>&1
     rm -f "$tmp_bin" "$tmp_data"
     command -v glmark2-es2-drm >/dev/null 2>&1
 }
@@ -2065,7 +2103,7 @@ systemctl start emulationstation 2>/dev/null
 RUNNER_EOF
 
     chmod +x /tmp/gpu_bench_runner.sh
-    echo ark | sudo -S bash -c '
+    bash -c '
 cat > /etc/systemd/system/r36-gpu-bench.service << SVCEOF
 [Unit]
 Description=R36 GPU Benchmark
@@ -2131,35 +2169,7 @@ StressTestCPU() {
     local SILENT="${1:-0}"
     local CPU_BENCH=/tmp/r36_cpubench_30s_o1
 
-    # Compile C benchmark if not ready (same source as BenchmarkCPU)
-    if [ ! -x "$CPU_BENCH" ] && command -v gcc >/dev/null 2>&1; then
-        cat > /tmp/r36_cpubench_30s.c << 'CSRC'
-#include <stdio.h>
-#include <time.h>
-#include <stdint.h>
-int main() {
-    struct timespec t0, t1;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-    uint32_t a=1, b=2, c=3, d=4;
-    long long iters = 0;
-    int i;
-    do {
-        for (i = 0; i < 10000000; i++) {
-            a = a * 1664525u + 1013904223u;
-            b = b * 1664525u + 1013904223u;
-            c = c * 1664525u + 1013904223u;
-            d = d * 1664525u + 1013904223u;
-        }
-        iters += 40000000;
-        clock_gettime(CLOCK_MONOTONIC, &t1);
-    } while ((t1.tv_sec - t0.tv_sec) < 30);
-    if (a ^ b ^ c ^ d == 0) iters++;
-    printf("%lld\n", iters);
-    return 0;
-}
-CSRC
-        gcc -O1 -o "$CPU_BENCH" /tmp/r36_cpubench_30s.c 2>/dev/null
-    fi
+    CompileCPUBench
 
     # Need at least one stress source
     if [ ! -x "$CPU_BENCH" ] && ! command -v openssl >/dev/null 2>&1; then
@@ -2412,7 +2422,7 @@ MainMenu() {
         if [ -f /tmp/gpu_bench_pending ]; then
             local PENDING_MSG; PENDING_MSG=$(cat /tmp/gpu_bench_pending)
             rm -f /tmp/gpu_bench_pending
-            dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULTADO ]" \
+            dialog --backtitle "$BACKTITLE" --title "[ GPU BENCHMARK — RESULT ]" \
                 --msgbox "${PENDING_MSG}" 12 52 > "$CURR_TTY"
         fi
         local PROF_STATUS="✗ off"
