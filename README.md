@@ -1,9 +1,8 @@
-# R36 Tuner
+# R36 Tuner Next
 
-[![GitHub release](https://img.shields.io/github/v/release/zenmode-adri/r36-tuner?style=flat-square)](https://github.com/zenmode-adri/r36-tuner/releases)
-[![GitHub stars](https://img.shields.io/github/stars/zenmode-adri/r36-tuner?style=flat-square)](https://github.com/zenmode-adri/r36-tuner/stargazers)
+[![GitHub release](https://img.shields.io/github/v/release/zenmode-adri/r36-tuner-next?style=flat-square)](https://github.com/zenmode-adri/r36-tuner-next/releases)
+[![GitHub stars](https://img.shields.io/github/stars/zenmode-adri/r36-tuner-next?style=flat-square)](https://github.com/zenmode-adri/r36-tuner-next/stargazers)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&style=flat-square)](https://ko-fi.com/zenmodeadri)
-
 Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices running [dArkOSRE-R36](https://github.com/southoz/dArkOSRE-R36) (RK3326 SoC).
 
 ## Features
@@ -12,7 +11,7 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - GPU max frequency selection
 - DMC / RAM max frequency selection
 - **DTB undervolt** — permanent voltage reduction via OPP table patch. Detects your chip bin (L0–L3) automatically and patches only the correct voltage table. Uniform mode or per-OPP fine-tune.
-- **CPU OC to 1608 MHz** — unlocks 1608 MHz via DTB patch (no kernel recompile).
+- **CPU OC to 1608 MHz** — adds a 1608 MHz OPP via DTB patch. The teacupx kernel shipped with dArkOSRE already supports this clock rate; the stock DTB suppresses it.
 - **GPU OC to 600 MHz** — adds 600 MHz OPP via DTB patch.
 - **RAM OC to 928 MHz** — adds 928 MHz OPP via DTB patch. ATF delivers 924 MHz (nearest PLL divisor).
 - **DTB safety net** — early-boot systemd service detects if the previous boot hung after a DTB patch and restores the original backup before userspace starts.
@@ -59,7 +58,7 @@ The tuner detects your chip bin from `dmesg` (`pvtm-volt-sel`) and patches the c
 
 Adds a `opp-600000000` node to the GPU OPP table in the DTB. The GPU clock uses `gpll / 2 = 600 MHz` exactly — no clock driver changes needed.
 
-**Results on our unit (L2 bin):** 520 MHz → 600 MHz = **+20% GPU compute** (terrain benchmark). Tested stable floor: **1025 mV** (−125 mV from initial OC voltage of 1150 mV). Your chip may differ.
+**Results on our unit (L2 bin):** terrain +20% in full OC+UV benchmark (CPU 1608 MHz + GPU 600 MHz + RAM 924 MHz + undervolts vs stock — not GPU-only). Tested stable floor: **1025 mV** (−125 mV from initial OC voltage of 1150 mV). Your chip may differ.
 
 > `vdd_logic` is shared between GPU and DMC. See [vdd_logic shared rail](#vdd_logic-shared-rail--gpu--ram-oc-voltage).
 
