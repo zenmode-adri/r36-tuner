@@ -1,10 +1,13 @@
 # Changelog
 
-## Unreleased
+## v4.4 — 2026-06-14
 
-**Bug fix:**
+**CPU OC correction:**
 
+- Fix: CPU OC feature labelled "1608 MHz" throughout the UI. On stock dArkOSRE kernel the CPU does not run above ~1296 MHz regardless of the DTB patch — the 1608 MHz label was inaccurate. All UI strings changed to "CPU OC (teacupx)".
+- Fix: CPU OC info screen stated "no kernel recompile needed", implying the feature works on any kernel. Replaced with explicit requirement: real OC above 1296 MHz requires [teacupx kernel](https://github.com/teacupx/overclock-r36s); real max with teacupx is 1512 MHz.
 - Fix: RAM OC menu now offers "Tune 924 MHz voltage" or "Add 1032 MHz [EXPERIMENTAL]" when 924 MHz OC is already active but 1032 MHz is not. Previously the menu went straight to voltage tuning with no way to add the second OPP.
+- Docs: README corrected — GPU benchmark results clarified as full OC+UV comparison (GPU 600 + RAM 924 + undervolts vs stock), not GPU-only; CPU OC section updated to reflect teacupx requirement.
 
 ## v4.3 — 2026-05-27
 
