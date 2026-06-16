@@ -24,6 +24,23 @@ Real-time CPU / GPU / DMC / Voltage tuning tool for R36S and compatible devices 
 - Save profile → applies at every boot via systemd service
 - Fail-safe: panic flag detects boot hangs and auto-disables the profile
 
+## Screenshots
+
+<table>
+<tr>
+<td align="center"><img src="docs/screenshots/MENU_principal.jpeg" width="280"/><br/><sub>Main menu</sub></td>
+<td align="center"><img src="docs/screenshots/dtb_tuning.jpeg" width="280"/><br/><sub>DTB Tuning menu</sub></td>
+<td align="center"><img src="docs/screenshots/voltage_mainmenu.jpeg" width="280"/><br/><sub>CPU undervolt — OPP table</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/voltage_selector.jpeg" width="280"/><br/><sub>GPU OC — voltage selector</sub></td>
+<td align="center"><img src="docs/screenshots/ram_overclock.jpeg" width="280"/><br/><sub>RAM OC — 924 / 1032 MHz selector</sub></td>
+<td align="center"><img src="docs/screenshots/benchmark.jpeg" width="280"/><br/><sub>Benchmark menu</sub></td>
+</tr>
+</table>
+
+---
+
 ## Requirements
 
 - Device: R36S or compatible clone (RK3326 / RK3326S SoC)
@@ -95,9 +112,7 @@ For full ATF/DMC mechanism and bandwidth sweep see [docs/opp-research.md](docs/o
 
 ### ⚗️ Experimental — 1040 MHz OC (ATF delivers 1032 MHz)
 
-> **Not available in the script yet. Under active testing — do not attempt manually.**
-
-Preliminary bandwidth results on our unit (L2 bin, same methodology as above):
+Available in the RAM OC menu when 928 MHz is already active. Bandwidth results on our unit (L2 bin, same methodology as above):
 
 | DMC freq | Write MB/s | Copy MB/s |
 |----------|-----------|-----------|
