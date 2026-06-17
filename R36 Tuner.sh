@@ -1,5 +1,5 @@
 #!/bin/bash
-# R36 Tuner v4.3 — CPU / GPU / RAM / Voltage tuning for R36S (RK3326)
+# R36 Tuner v4.4 — CPU / GPU / RAM / Voltage tuning for R36S (RK3326)
 # Part of dArkOSRE R36 — https://github.com/southoz/dArkOSRE-R36
 
 if [ "$(id -u)" -ne 0 ]; then exec sudo -- "$0" "$@"; fi
@@ -28,7 +28,7 @@ if { [ "$1" = "--ui" ] || [ "$R36_TUNER_UI" = "1" ]; }; then
     # If neither launcher exists, fall through to the dialog menu
 fi
 
-VERSION="4.3"
+VERSION="4.4"
 CURR_TTY="/dev/tty1"
 BACKTITLE="R36 Tuner v${VERSION}"
 CONFIG_FILE="/etc/r36_tuner.ini"
